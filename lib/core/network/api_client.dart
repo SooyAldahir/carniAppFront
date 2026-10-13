@@ -22,7 +22,15 @@ class ApiClient {
     final response = await http
         .get(uri, headers: _headers(token))
         .timeout(const Duration(seconds: 10));
-    return _decodeOrThrow(response);
+    return _decodeMapaOThrow(response);
+  }
+
+  Future<List<dynamic>> getJsonList(String path, {String? token}) async {
+    final uri = Uri.parse('$baseUrl$path');
+    final response = await http
+        .get(uri, headers: _headers(token))
+        .timeout(const Duration(seconds: 10));
+    return _decodeListaOThrow(response);
   }
 
   Future<Map<String, dynamic>> postJson(
@@ -34,7 +42,7 @@ class ApiClient {
     final response = await http
         .post(uri, headers: _headers(token), body: jsonEncode(body))
         .timeout(const Duration(seconds: 10));
-    return _decodeOrThrow(response);
+    return _decodeMapaOThrow(response);
   }
 
   Future<Map<String, dynamic>> putJson(
@@ -46,7 +54,7 @@ class ApiClient {
     final response = await http
         .put(uri, headers: _headers(token), body: jsonEncode(body))
         .timeout(const Duration(seconds: 10));
-    return _decodeOrThrow(response);
+    return _decodeMapaOThrow(response);
   }
 
   Future<void> postNoContent(
@@ -58,23 +66,47 @@ class ApiClient {
     final response = await http
         .post(uri, headers: _headers(token), body: jsonEncode(body))
         .timeout(const Duration(seconds: 10));
-
-    if (response.statusCode >= 400) {
-      _decodeOrThrow(response);
-    }
+    _lanzarSiError(response);
   }
 
-  Map<String, dynamic> _decodeOrThrow(http.Response response) {
+  Future<void> deleteNoContent(String path, {String? token}) async {
+    final uri = Uri.parse('$baseUrl$path');
+    final response = await http
+        .delete(uri, headers: _headers(token))
+        .timeout(const Duration(seconds: 10));
+    _lanzarSiError(response);
+  }
+
+  Map<String, dynamic> _decodeMapaOThrow(http.Response response) {
+    _lanzarSiError(response);
     final bodyTexto = response.body.isEmpty ? '{}' : response.body;
     final decodificado = jsonDecode(bodyTexto);
-    final json = decodificado is Map<String, dynamic> ? decodificado : <String, dynamic>{};
+    return decodificado is Map<String, dynamic> ? decodificado : <String, dynamic>{};
+  }
 
-    if (response.statusCode >= 200 && response.statusCode < 300) {
-      return json;
+  List<dynamic> _decodeListaOThrow(http.Response response) {
+    _lanzarSiError(response);
+    final bodyTexto = response.body.isEmpty ? '[]' : response.body;
+    final decodificado = jsonDecode(bodyTexto);
+    return decodificado is List<dynamic> ? decodificado : <dynamic>[];
+  }
+
+  void _lanzarSiError(http.Response response) {
+    if (response.statusCode >= 200 && response.statusCode < 300) return;
+
+    String mensaje = 'El servidor respondio ${response.statusCode}.';
+
+    if (response.body.isNotEmpty) {
+      try {
+        final decodificado = jsonDecode(response.body);
+        if (decodificado is Map<String, dynamic> && decodificado['mensaje'] is String) {
+          mensaje = decodificado['mensaje'] as String;
+        }
+      } catch (_) {
+        // Body no era JSON valido; nos quedamos con el mensaje generico.
+      }
     }
 
-    final mensaje = json['mensaje'] as String? ??
-        'El servidor respondio ${response.statusCode}.';
     throw ApiException(response.statusCode, mensaje);
   }
 }

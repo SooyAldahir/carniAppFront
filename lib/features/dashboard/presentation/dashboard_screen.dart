@@ -3,12 +3,14 @@ import 'package:provider/provider.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../../catalogos/presentation/catalogos_screen.dart';
 import '../../negocio/data/negocio_api.dart';
 import '../../negocio/data/negocio_dto.dart';
 
-/// Dashboard minimo de Sprint 1: muestra la marca del negocio
-/// (RF-CONFIG-003) y los datos de sesion del usuario autenticado. Los
-/// modulos reales (POS, Inventario, etc.) llegan en sprints posteriores.
+/// Dashboard de Sprint 1-2: muestra la marca del negocio
+/// (RF-CONFIG-003), los datos de sesion del usuario autenticado y el
+/// acceso al Catálogo (RF-INV-001/002). Los modulos restantes (POS,
+/// Inventario completo, etc.) llegan en sprints posteriores.
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
@@ -75,12 +77,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 usuario.rol,
                 style: const TextStyle(color: Colors.grey),
               ),
+              const SizedBox(height: 32),
+              FilledButton.icon(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const CatalogosScreen()),
+                ),
+                icon: const Icon(Icons.inventory_2_outlined),
+                label: const Text('Catálogo (cortes y tipos de animal)'),
+              ),
               const SizedBox(height: 24),
               const Text(
-                'Sprint 1 completo: login, permisos y configuracion del '
-                'negocio funcionando de punta a punta.\n\n'
-                'Los modulos (POS, Inventario, Clientes...) llegan en los '
-                'siguientes sprints.',
+                'Los demas modulos (POS, Inventario completo, Clientes...) '
+                'llegan en los siguientes sprints.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Colors.grey),
               ),
