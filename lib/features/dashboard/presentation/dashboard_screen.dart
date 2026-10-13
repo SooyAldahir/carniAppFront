@@ -4,13 +4,14 @@ import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../catalogos/presentation/catalogos_screen.dart';
+import '../../inventario/presentation/inventario_screen.dart';
 import '../../negocio/data/negocio_api.dart';
 import '../../negocio/data/negocio_dto.dart';
 
-/// Dashboard de Sprint 1-2: muestra la marca del negocio
-/// (RF-CONFIG-003), los datos de sesion del usuario autenticado y el
-/// acceso al Catálogo (RF-INV-001/002). Los modulos restantes (POS,
-/// Inventario completo, etc.) llegan en sprints posteriores.
+/// Dashboard: muestra la marca del negocio (RF-CONFIG-003), los datos
+/// de sesion del usuario autenticado y accesos a Catálogo e
+/// Inventario. Los demas modulos (POS, Clientes, etc.) llegan en
+/// sprints posteriores.
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
@@ -85,10 +86,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 icon: const Icon(Icons.inventory_2_outlined),
                 label: const Text('Catálogo (cortes y tipos de animal)'),
               ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const InventarioScreen()),
+                ),
+                icon: const Icon(Icons.warehouse_outlined),
+                label: const Text('Inventario'),
+              ),
               const SizedBox(height: 24),
               const Text(
-                'Los demas modulos (POS, Inventario completo, Clientes...) '
-                'llegan en los siguientes sprints.',
+                'Los demas modulos (POS, Clientes, Caja...) llegan en los '
+                'siguientes sprints.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Colors.grey),
               ),
