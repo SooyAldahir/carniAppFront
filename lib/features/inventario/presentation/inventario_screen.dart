@@ -23,14 +23,17 @@ class _InventarioScreenState extends State<InventarioScreen> {
   bool _cargando = true;
   String? _error;
 
-  late String _token;
+  late AuthProvider _auth;
+
+  /// Siempre el token mas reciente: AuthProvider lo renueva solo antes de que venza.
+  String get _token => _auth.accessToken!;
   late bool _puedeAjustar;
 
   @override
   void initState() {
     super.initState();
     final auth = context.read<AuthProvider>();
-    _token = auth.accessToken!;
+    _auth = auth;
     _puedeAjustar = auth.usuarioActual?.tienePermiso('inventario.ajustar') ?? false;
     _cargar();
   }

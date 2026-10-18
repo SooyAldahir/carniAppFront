@@ -25,7 +25,10 @@ class _CatalogosScreenState extends State<CatalogosScreen> with SingleTickerProv
   bool _cargando = true;
   String? _error;
 
-  late String _token;
+  late AuthProvider _auth;
+
+  /// Siempre el token mas reciente: AuthProvider lo renueva solo antes de que venza.
+  String get _token => _auth.accessToken!;
   late bool _puedeAdministrar;
 
   @override
@@ -33,7 +36,7 @@ class _CatalogosScreenState extends State<CatalogosScreen> with SingleTickerProv
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     final auth = context.read<AuthProvider>();
-    _token = auth.accessToken!;
+    _auth = auth;
     _puedeAdministrar = auth.usuarioActual?.tienePermiso('catalogo.administrar') ?? false;
     _cargarTodo();
   }

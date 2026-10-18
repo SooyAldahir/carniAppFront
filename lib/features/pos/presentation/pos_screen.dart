@@ -1,0 +1,406 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../../../core/network/api_client.dart';
+import '../../../core/network/api_exception.dart';
+import '../../../core/theme/app_colors.dart';
+import '../../auth/providers/auth_provider.dart';
+import '../data/pos_api.dart';
+import '../data/pos_dtos.dart';
+import 'cobro_dialog.dart';
+import 'ventas_screen.dart';
+
+/// RF-POS-001/002/008: punto de venta. Catalogo de cortes con precio y stock,
+/// carrito (kg con decimales o piezas enteras) y cobro simple o mixto.
+/// El servidor recalcula el total con el precio del catalogo y valida stock.
+class PosScreen extends StatefulWidget {
+  const PosScreen({super.key});
+
+  @override
+  State<PosScreen> createState() => _PosScreenState();
+}
+
+class _PosScreenState extends State<PosScreen> {
+  final PosApi _api = PosApi(ApiClient());
+  late AuthProvider _auth;
+
+  List<CortePosDto> _catalogo = [];
+  List<MetodoPagoDto> _metodos = [];
+  final List<LineaCarrito> _carrito = [];
+  String _filtro = '';
+  bool _cargando = true;
+  bool _cobrando = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _auth = context.read<AuthProvider>();
+    _cargar();
+  }
+
+  double get _total => redondear2(_carrito.fold(0.0, (suma, l) => suma + l.importe));
+
+  double _enCarrito(CortePosDto corte) => _carrito
+      .where((l) => l.corte.corteId == corte.corteId)
+      .fold(0.0, (suma, l) => suma + l.cantidad);
+
+  Future<void> _cargar() async {
+    setState(() {
+      _cargando = true;
+      _error = null;
+    });
+    try {
+      final token = await _auth.obtenerTokenVigente();
+      final resultados = await Future.wait([_api.catalogo(token), _api.metodosPago(token)]);
+      if (!mounted) return;
+      setState(() {
+        _catalogo = resultados[0] as List<CortePosDto>;
+        _metodos = resultados[1] as List<MetodoPagoDto>;
+        _cargando = false;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.mensaje;
+        _cargando = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'No se pudo conectar con el servidor.';
+        _cargando = false;
+      });
+    }
+  }
+
+  void _avisar(String mensaje) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(mensaje)));
+  }
+
+  Future<void> _agregar(CortePosDto corte, VoidCallback refrescar) async {
+    final disponible = corte.stockActual - _enCarrito(corte);
+    final controller = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    final cantidad = await showDialog<double>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(corte.nombre),
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('${dinero(corte.precioBase)} por ${corte.unidadCorta}  ·  '
+                  'disponible: ${cantidadTexto(disponible < 0 ? 0 : disponible)} ${corte.unidadCorta}'),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: controller,
+                autofocus: true,
+                keyboardType: TextInputType.numberWithOptions(decimal: !corte.esPieza),
+                decoration: InputDecoration(
+                  labelText: corte.esPieza ? 'Piezas' : 'Peso (kg)',
+                  suffixText: corte.unidadCorta,
+                ),
+                validator: (v) {
+                  final valor = double.tryParse((v ?? '').trim());
+                  if (valor == null || valor <= 0) return 'Captura una cantidad mayor a cero';
+                  if (corte.esPieza && valor != valor.truncateToDouble()) return 'Se vende por pieza: usa un entero';
+                  if (valor > disponible + 0.0000001) {
+                    return 'Solo hay ${cantidadTexto(disponible)} ${corte.unidadCorta} disponibles';
+                  }
+                  return null;
+                },
+                onFieldSubmitted: (_) {
+                  if (formKey.currentState!.validate()) {
+                    Navigator.pop(context, double.parse(controller.text.trim()));
+                  }
+                },
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+          FilledButton(
+            onPressed: () {
+              if (formKey.currentState!.validate()) {
+                Navigator.pop(context, double.parse(controller.text.trim()));
+              }
+            },
+            child: const Text('Agregar'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+
+    if (cantidad == null) return;
+
+    final existente = _carrito.where((l) => l.corte.corteId == corte.corteId).firstOrNull;
+    setState(() {
+      if (existente != null) {
+        existente.cantidad = redondear3(existente.cantidad + cantidad);
+      } else {
+        _carrito.add(LineaCarrito(corte, cantidad));
+      }
+    });
+    refrescar();
+  }
+
+  double redondear3(double v) => (v * 1000).roundToDouble() / 1000;
+
+  Future<void> _cobrar() async {
+    if (_carrito.isEmpty || _cobrando) return;
+
+    final resultado = await showDialog<ResultadoCobro>(
+      context: context,
+      builder: (_) => CobroDialog(total: _total, metodos: _metodos),
+    );
+    if (resultado == null) return;
+
+    setState(() => _cobrando = true);
+    try {
+      final token = await _auth.obtenerTokenVigente();
+      final venta = await _api.crearVenta(token, lineas: List.of(_carrito), pagos: resultado.pagos);
+      if (!mounted) return;
+      setState(() {
+        _carrito.clear();
+        _cobrando = false;
+      });
+      await _mostrarConfirmacion(venta, resultado.cambio);
+      await _cargar();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _cobrando = false);
+      _avisar(e.mensaje);
+      // 409: el stock cambio (otra caja vendio). Recargar para ver el stock real.
+      if (e.statusCode == 409) await _cargar();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _cobrando = false);
+      _avisar('No se pudo conectar con el servidor. La venta NO se registro.');
+    }
+  }
+
+  Future<void> _mostrarConfirmacion(VentaDto venta, double cambio) => showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          title: Text('Venta #${venta.folio} registrada'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Total: ${dinero(venta.total)}', style: Theme.of(context).textTheme.titleLarge),
+              if (cambio > 0) ...[
+                const SizedBox(height: 8),
+                Text('Cambio: ${dinero(cambio)}', style: Theme.of(context).textTheme.titleLarge),
+              ],
+            ],
+          ),
+          actions: [
+            FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Nueva venta')),
+          ],
+        ),
+      );
+
+  Widget _panelCatalogo() {
+    final filtrados = _catalogo
+        .where((c) => c.nombre.toLowerCase().contains(_filtro.toLowerCase()) ||
+            c.tipoAnimal.toLowerCase().contains(_filtro.toLowerCase()))
+        .toList();
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(12),
+          child: TextField(
+            decoration: const InputDecoration(
+              prefixIcon: Icon(Icons.search),
+              hintText: 'Buscar corte o animal',
+              border: OutlineInputBorder(),
+              isDense: true,
+            ),
+            onChanged: (v) => setState(() => _filtro = v),
+          ),
+        ),
+        Expanded(
+          child: filtrados.isEmpty
+              ? const Center(child: Text('Sin cortes para mostrar.'))
+              : ListView.separated(
+                  itemCount: filtrados.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (context, i) {
+                    final corte = filtrados[i];
+                    final disponible = corte.stockActual - _enCarrito(corte);
+                    final agotado = disponible <= 0;
+                    return ListTile(
+                      enabled: !agotado,
+                      title: Text(corte.nombre),
+                      subtitle: Text('${corte.tipoAnimal}  ·  ${dinero(corte.precioBase)}/${corte.unidadCorta}'),
+                      trailing: Text(
+                        agotado ? 'Agotado' : '${cantidadTexto(disponible)} ${corte.unidadCorta}',
+                        style: TextStyle(color: agotado ? AppColors.stockAgotado : AppColors.stockNormal),
+                      ),
+                      onTap: () => _agregar(corte, () {}),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _panelCarrito({VoidCallback? refrescar}) {
+    return Column(
+      children: [
+        Expanded(
+          child: _carrito.isEmpty
+              ? const Center(child: Text('El ticket esta vacio.\nToca un corte para agregarlo.', textAlign: TextAlign.center))
+              : ListView.separated(
+                  itemCount: _carrito.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (context, i) {
+                    final linea = _carrito[i];
+                    return ListTile(
+                      title: Text(linea.corte.nombre),
+                      subtitle: Text(
+                          '${cantidadTexto(linea.cantidad)} ${linea.corte.unidadCorta} × ${dinero(linea.corte.precioBase)}'),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(dinero(linea.importe), style: const TextStyle(fontWeight: FontWeight.bold)),
+                          IconButton(
+                            tooltip: 'Quitar',
+                            icon: const Icon(Icons.delete_outline),
+                            onPressed: () {
+                              setState(() => _carrito.removeAt(i));
+                              refrescar?.call();
+                            },
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+        ),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: const BoxDecoration(color: AppColors.hueso),
+          child: Column(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('TOTAL', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  Text(dinero(_total), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                ],
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: _carrito.isEmpty || _cobrando
+                      ? null
+                      : () {
+                          // Cierra la hoja del ticket (si esta abierta) antes de cobrar.
+                          if (refrescar != null) Navigator.of(context).pop();
+                          _cobrar();
+                        },
+                  icon: _cobrando
+                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.payments_outlined),
+                  label: const Text('Cobrar'),
+                ),
+              ),
+              if (_carrito.isNotEmpty)
+                TextButton(
+                  onPressed: () {
+                    setState(_carrito.clear);
+                    refrescar?.call();
+                  },
+                  child: const Text('Vaciar ticket'),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _abrirTicketMovil() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => StatefulBuilder(
+        builder: (context, setSheetState) => SizedBox(
+          height: MediaQuery.of(context).size.height * 0.8,
+          child: _panelCarrito(refrescar: () => setSheetState(() {})),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Punto de venta'),
+        actions: [
+          IconButton(
+            tooltip: 'Ventas del dia',
+            icon: const Icon(Icons.receipt_long_outlined),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const VentasScreen()),
+            ),
+          ),
+          IconButton(tooltip: 'Actualizar stock', icon: const Icon(Icons.refresh), onPressed: _cargar),
+        ],
+      ),
+      body: _cargando
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(_error!),
+                      const SizedBox(height: 12),
+                      FilledButton(onPressed: _cargar, child: const Text('Reintentar')),
+                    ],
+                  ),
+                )
+              : LayoutBuilder(
+                  builder: (context, constraints) {
+                    if (constraints.maxWidth >= 800) {
+                      return Row(
+                        children: [
+                          Expanded(flex: 3, child: _panelCatalogo()),
+                          const VerticalDivider(width: 1),
+                          Expanded(flex: 2, child: _panelCarrito()),
+                        ],
+                      );
+                    }
+                    return _panelCatalogo();
+                  },
+                ),
+      bottomNavigationBar: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth >= 800 || _cargando || _error != null) return const SizedBox.shrink();
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: FilledButton.icon(
+                onPressed: _carrito.isEmpty ? null : _abrirTicketMovil,
+                icon: const Icon(Icons.shopping_cart_outlined),
+                label: Text('Ticket (${_carrito.length}) · ${dinero(_total)}'),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
