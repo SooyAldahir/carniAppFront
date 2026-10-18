@@ -2,6 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:carniapp/features/pos/data/pos_dtos.dart';
 
 void main() {
+  descuentoTests();
+
   test('redondear2 redondea a centavos como el backend', () {
     expect(redondear2(49.94667), 49.95);
     expect(redondear2(10), 10.0);
@@ -63,5 +65,30 @@ void main() {
     expect(venta.anulada, isTrue);
     expect(venta.lineas.single.cantidad, 2.5);
     expect(venta.pagos.single.metodoPago, 'Efectivo');
+  });
+}
+
+void descuentoTests() {
+  test('DescuentoCaptura en porcentaje y en pesos, acotado al importe', () {
+    expect(const DescuentoCaptura.porcentaje(10).aplicarSobre(200), 20);
+    expect(const DescuentoCaptura.porcentaje(33.33).aplicarSobre(100), 33.33);
+    expect(const DescuentoCaptura.monto(15).aplicarSobre(200), 15);
+    expect(const DescuentoCaptura.monto(500).aplicarSobre(200), 200);
+    expect(const DescuentoCaptura.monto(-5).aplicarSobre(200), 0);
+  });
+
+  test('LineaCarrito aplica el descuento de linea al importe', () {
+    final corte = CortePosDto(
+      corteId: 'c1',
+      nombre: 'Bistec',
+      tipoAnimal: 'Res',
+      unidadVenta: 'Peso',
+      precioBase: 100,
+      stockActual: 10,
+    );
+    final linea = LineaCarrito(corte, 2)..descuentoCaptura = const DescuentoCaptura.porcentaje(5);
+    expect(linea.bruto, 200);
+    expect(linea.descuento, 10);
+    expect(linea.importe, 190);
   });
 }

@@ -54,14 +54,37 @@ class MetodoPagoDto {
       );
 }
 
+/// Descuento capturado por la cajera: porcentaje o monto fijo (RF-POS-004).
+/// El servidor siempre recibe pesos; el porcentaje solo existe en el cliente.
+class DescuentoCaptura {
+  final bool porcentaje;
+  final double valor;
+
+  const DescuentoCaptura.porcentaje(this.valor) : porcentaje = true;
+  const DescuentoCaptura.monto(this.valor) : porcentaje = false;
+
+  /// Descuento en pesos sobre [base], acotado a [0, base].
+  double aplicarSobre(double base) {
+    var d = porcentaje ? redondear2(base * valor / 100) : redondear2(valor);
+    if (d < 0) d = 0;
+    if (d > base) d = base;
+    return d;
+  }
+
+  String get etiqueta => porcentaje ? '${cantidadTexto(valor)}%' : dinero(valor);
+}
+
 /// Linea del carrito (solo vive en el cliente hasta cobrar).
 class LineaCarrito {
   final CortePosDto corte;
   double cantidad;
+  DescuentoCaptura? descuentoCaptura;
 
   LineaCarrito(this.corte, this.cantidad);
 
-  double get importe => redondear2(cantidad * corte.precioBase);
+  double get bruto => redondear2(cantidad * corte.precioBase);
+  double get descuento => descuentoCaptura?.aplicarSobre(bruto) ?? 0;
+  double get importe => redondear2(bruto - descuento);
 }
 
 /// Pago capturado en la pantalla de cobro.
@@ -78,6 +101,7 @@ class VentaLineaDto {
   final double cantidad;
   final double precioUnitario;
   final double importe;
+  final double descuento;
 
   VentaLineaDto({
     required this.corteNombre,
@@ -85,6 +109,7 @@ class VentaLineaDto {
     required this.cantidad,
     required this.precioUnitario,
     required this.importe,
+    this.descuento = 0,
   });
 
   factory VentaLineaDto.fromJson(Map<String, dynamic> json) => VentaLineaDto(
@@ -93,6 +118,7 @@ class VentaLineaDto {
         cantidad: (json['cantidad'] as num).toDouble(),
         precioUnitario: (json['precioUnitario'] as num).toDouble(),
         importe: (json['importe'] as num).toDouble(),
+        descuento: (json['descuento'] as num?)?.toDouble() ?? 0,
       );
 }
 
@@ -115,6 +141,8 @@ class VentaDto {
   final String estado;
   final String? motivoAnulacion;
   final String? usuarioNombre;
+  final double subtotal;
+  final double descuento;
   final double total;
   final List<VentaLineaDto> lineas;
   final List<VentaPagoDto> pagos;
@@ -126,6 +154,8 @@ class VentaDto {
     required this.estado,
     required this.motivoAnulacion,
     required this.usuarioNombre,
+    required this.subtotal,
+    required this.descuento,
     required this.total,
     required this.lineas,
     required this.pagos,
@@ -140,6 +170,8 @@ class VentaDto {
         estado: json['estado'] as String,
         motivoAnulacion: json['motivoAnulacion'] as String?,
         usuarioNombre: json['usuarioNombre'] as String?,
+        subtotal: (json['subtotal'] as num).toDouble(),
+        descuento: (json['descuento'] as num).toDouble(),
         total: (json['total'] as num).toDouble(),
         lineas: (json['lineas'] as List<dynamic>)
             .map((e) => VentaLineaDto.fromJson(e as Map<String, dynamic>))

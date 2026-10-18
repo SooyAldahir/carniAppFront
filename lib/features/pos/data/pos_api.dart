@@ -21,12 +21,16 @@ class PosApi {
     String token, {
     required List<LineaCarrito> lineas,
     required List<PagoCaptura> pagos,
+    double descuentoTotal = 0,
   }) async {
     final json = await _client.postJson(
       '/api/ventas',
       {
-        'lineas': lineas.map((l) => {'corteId': l.corte.corteId, 'cantidad': l.cantidad}).toList(),
+        'lineas': lineas
+            .map((l) => {'corteId': l.corte.corteId, 'cantidad': l.cantidad, 'descuento': l.descuento})
+            .toList(),
         'pagos': pagos.map((p) => {'metodoPagoId': p.metodoPagoId, 'importe': p.importe}).toList(),
+        'descuentoTotal': descuentoTotal,
       },
       token: token,
     );
@@ -49,5 +53,11 @@ class PosApi {
   Future<VentaDto> anular(String token, String id, String motivo) async {
     final json = await _client.postJson('/api/ventas/$id/anular', {'motivo': motivo}, token: token);
     return VentaDto.fromJson(json);
+  }
+
+  /// Ticket en texto plano de 32 columnas (RF-POS-010).
+  Future<String> ticket(String token, String id) async {
+    final json = await _client.getJson('/api/ventas/$id/ticket', token: token);
+    return json['texto'] as String;
   }
 }

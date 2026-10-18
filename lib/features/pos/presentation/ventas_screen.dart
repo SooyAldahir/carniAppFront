@@ -101,13 +101,27 @@ class _VentasScreenState extends State<VentasScreen> {
                           Expanded(
                             child: Text(
                                 '${l.corteNombre}  ${cantidadTexto(l.cantidad)} ${l.unidadVenta == 'Pieza' ? 'pza' : 'kg'}'
-                                ' × ${dinero(l.precioUnitario)}'),
+                                ' × ${dinero(l.precioUnitario)}'
+                                '${l.descuento > 0 ? '\n  Descuento: -${dinero(l.descuento)}' : ''}'),
                           ),
                           Text(dinero(l.importe)),
                         ],
                       ),
                     ),
                   const Divider(),
+                  if (venta.descuento > 0) ...[
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [const Text('Subtotal'), Text(dinero(venta.subtotal))],
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Descuento'),
+                        Text('-${dinero(venta.descuento)}', style: const TextStyle(color: AppColors.stockAgotado)),
+                      ],
+                    ),
+                  ],
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -127,6 +141,11 @@ class _VentasScreenState extends State<VentasScreen> {
             ),
           ),
           actions: [
+            TextButton.icon(
+              icon: const Icon(Icons.receipt_long_outlined),
+              label: const Text('Ticket'),
+              onPressed: () => verTicket(context, _api, venta.id),
+            ),
             if (_puedeAnular && !venta.anulada)
               TextButton(
                 onPressed: () => Navigator.pop(context, true),

@@ -1,4 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import '../../../core/network/api_exception.dart';
+import '../../auth/providers/auth_provider.dart';
+import '../data/pos_api.dart';
 import '../data/pos_dtos.dart';
 
 /// Pide la cantidad de un corte (kg con decimales o piezas enteras).
@@ -147,6 +152,164 @@ class _MotivoDialogState extends State<_MotivoDialog> {
           },
           child: Text(widget.textoConfirmar),
         ),
+      ],
+    );
+  }
+}
+
+/// RF-POS-004: captura un descuento en porcentaje o en pesos sobre [baseMonto].
+/// Devuelve null si se cancela; `DescuentoCaptura.monto(0)` significa "quitar el descuento".
+Future<DescuentoCaptura?> pedirDescuento(
+  BuildContext context, {
+  required String titulo,
+  required double baseMonto,
+  DescuentoCaptura? actual,
+}) =>
+    showDialog<DescuentoCaptura>(
+      context: context,
+      builder: (_) => _DescuentoDialog(titulo: titulo, baseMonto: baseMonto, actual: actual),
+    );
+
+class _DescuentoDialog extends StatefulWidget {
+  final String titulo;
+  final double baseMonto;
+  final DescuentoCaptura? actual;
+
+  const _DescuentoDialog({required this.titulo, required this.baseMonto, required this.actual});
+
+  @override
+  State<_DescuentoDialog> createState() => _DescuentoDialogState();
+}
+
+class _DescuentoDialogState extends State<_DescuentoDialog> {
+  late final TextEditingController _controller;
+  final _formKey = GlobalKey<FormState>();
+  late bool _porcentaje;
+
+  @override
+  void initState() {
+    super.initState();
+    _porcentaje = widget.actual?.porcentaje ?? true;
+    _controller = TextEditingController(text: widget.actual == null ? '' : cantidadTexto(widget.actual!.valor));
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  double get _valor => double.tryParse(_controller.text.trim()) ?? 0;
+
+  void _aplicar() {
+    if (!_formKey.currentState!.validate()) return;
+    Navigator.pop(context, _porcentaje ? DescuentoCaptura.porcentaje(_valor) : DescuentoCaptura.monto(_valor));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final enPesos = _porcentaje ? redondear2(widget.baseMonto * _valor / 100) : _valor;
+
+    return AlertDialog(
+      title: Text(widget.titulo),
+      content: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Importe sobre el que se aplica: ${dinero(widget.baseMonto)}'),
+            const SizedBox(height: 12),
+            SegmentedButton<bool>(
+              segments: const [
+                ButtonSegment(value: true, label: Text('%')),
+                ButtonSegment(value: false, label: Text('\$')),
+              ],
+              selected: {_porcentaje},
+              onSelectionChanged: (v) => setState(() => _porcentaje = v.first),
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _controller,
+              autofocus: true,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(labelText: _porcentaje ? 'Porcentaje' : 'Monto', suffixText: _porcentaje ? '%' : null, prefixText: _porcentaje ? null : '\$ '),
+              onChanged: (_) => setState(() {}),
+              validator: (v) {
+                final valor = double.tryParse((v ?? '').trim());
+                if (valor == null || valor <= 0) return 'Captura un valor mayor a cero';
+                if (_porcentaje && valor > 100) return 'Maximo 100%';
+                if (!_porcentaje && valor > widget.baseMonto) return 'Excede el importe';
+                return null;
+              },
+              onFieldSubmitted: (_) => _aplicar(),
+            ),
+            if (_valor > 0) ...[
+              const SizedBox(height: 8),
+              Text('Descuento: ${dinero(enPesos)}'),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        if (widget.actual != null)
+          TextButton(
+            onPressed: () => Navigator.pop(context, const DescuentoCaptura.monto(0)),
+            child: const Text('Quitar'),
+          ),
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+        FilledButton(onPressed: _aplicar, child: const Text('Aplicar')),
+      ],
+    );
+  }
+}
+
+/// RF-POS-010: baja el ticket de una venta y lo muestra (ticket digital: copiar/compartir).
+Future<void> verTicket(BuildContext context, PosApi api, String ventaId) async {
+  final auth = context.read<AuthProvider>();
+  final messenger = ScaffoldMessenger.of(context);
+  try {
+    final token = await auth.obtenerTokenVigente();
+    final texto = await api.ticket(token, ventaId);
+    if (!context.mounted) return;
+    await showDialog<void>(context: context, builder: (_) => _TicketDialog(texto: texto));
+  } on ApiException catch (e) {
+    messenger.showSnackBar(SnackBar(content: Text(e.mensaje)));
+  } catch (_) {
+    messenger.showSnackBar(const SnackBar(content: Text('No se pudo cargar el ticket.')));
+  }
+}
+
+class _TicketDialog extends StatelessWidget {
+  final String texto;
+
+  const _TicketDialog({required this.texto});
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Ticket'),
+      content: SingleChildScrollView(
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          color: Colors.white,
+          child: SelectableText(
+            texto,
+            style: const TextStyle(fontFamily: 'monospace', fontSize: 13, color: Colors.black, height: 1.3),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton.icon(
+          icon: const Icon(Icons.copy),
+          label: const Text('Copiar'),
+          onPressed: () async {
+            final messenger = ScaffoldMessenger.of(context);
+            await Clipboard.setData(ClipboardData(text: texto));
+            messenger.showSnackBar(const SnackBar(content: Text('Ticket copiado.')));
+          },
+        ),
+        FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar')),
       ],
     );
   }
