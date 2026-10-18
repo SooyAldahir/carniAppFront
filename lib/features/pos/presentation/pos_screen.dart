@@ -4,6 +4,8 @@ import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../../clientes/data/clientes_dtos.dart';
+import '../../clientes/presentation/cliente_picker.dart';
 import '../data/pos_api.dart';
 import '../data/pos_dtos.dart';
 import 'cobro_dialog.dart';
@@ -31,6 +33,7 @@ class _PosScreenState extends State<PosScreen> {
   final TextEditingController _busquedaCtrl = TextEditingController();
   final FocusNode _busquedaFocus = FocusNode();
   DescuentoCaptura? _descuentoTotalCaptura;
+  ClienteDto? _cliente;
   late bool _puedeDescuento;
   bool _cargando = true;
   bool _cobrando = false;
@@ -153,7 +156,7 @@ class _PosScreenState extends State<PosScreen> {
 
     final resultado = await showDialog<ResultadoCobro>(
       context: context,
-      builder: (_) => CobroDialog(total: _total, metodos: _metodos),
+      builder: (_) => CobroDialog(total: _total, metodos: _metodos, cliente: _cliente),
     );
     if (resultado == null) return;
 
@@ -165,11 +168,13 @@ class _PosScreenState extends State<PosScreen> {
         lineas: List.of(_carrito),
         pagos: resultado.pagos,
         descuentoTotal: _descuentoGlobal,
+        clienteId: _cliente?.id,
       );
       if (!mounted) return;
       setState(() {
         _carrito.clear();
         _descuentoTotalCaptura = null;
+        _cliente = null;
         _cobrando = false;
       });
       await _mostrarConfirmacion(venta, resultado.cambio);
@@ -266,6 +271,13 @@ class _PosScreenState extends State<PosScreen> {
     );
   }
 
+  Future<void> _elegirCliente(VoidCallback? refrescar) async {
+    final seleccion = await elegirCliente(context);
+    if (seleccion == null) return;
+    setState(() => _cliente = seleccion.cliente);
+    refrescar?.call();
+  }
+
   Future<void> _descuentoDeLinea(LineaCarrito linea, VoidCallback? refrescar) async {
     final nuevo = await pedirDescuento(
       context,
@@ -348,6 +360,16 @@ class _PosScreenState extends State<PosScreen> {
           decoration: const BoxDecoration(color: AppColors.hueso),
           child: Column(
             children: [
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () => _elegirCliente(refrescar),
+                  icon: const Icon(Icons.person_outline),
+                  label: Text(_cliente == null
+                      ? 'Cliente: mostrador (toca para elegir)'
+                      : 'Cliente: ${_cliente!.nombre}'),
+                ),
+              ),
               if (_descuentoTotal > 0) ...[
                 _filaTotal('Subtotal', dinero(_subtotalBruto)),
                 _filaTotal(
@@ -392,6 +414,7 @@ class _PosScreenState extends State<PosScreen> {
                         setState(() {
                           _carrito.clear();
                           _descuentoTotalCaptura = null;
+                          _cliente = null;
                         });
                         refrescar?.call();
                       },

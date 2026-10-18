@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../clientes/data/clientes_dtos.dart';
 import '../data/pos_dtos.dart';
 
 /// Resultado del cobro: pagos exactos para el backend + cambio a entregar.
@@ -17,7 +18,10 @@ class CobroDialog extends StatefulWidget {
   final double total;
   final List<MetodoPagoDto> metodos;
 
-  const CobroDialog({super.key, required this.total, required this.metodos});
+  /// Cliente de la venta. Sin cliente no se ofrece Credito (RF-CRED-001).
+  final ClienteDto? cliente;
+
+  const CobroDialog({super.key, required this.total, required this.metodos, this.cliente});
 
   @override
   State<CobroDialog> createState() => _CobroDialogState();
@@ -26,12 +30,18 @@ class CobroDialog extends StatefulWidget {
 class _CobroDialogState extends State<CobroDialog> {
   late final Map<String, TextEditingController> _controllers;
 
+  /// Metodos que se muestran: Credito solo si la venta tiene cliente con credito.
+  late final List<MetodoPagoDto> _metodos;
+
+  double get _creditoDisponible => widget.cliente?.creditoDisponible ?? 0;
+
   @override
   void initState() {
     super.initState();
-    _controllers = {for (final m in widget.metodos) m.id: TextEditingController()};
+    _metodos = widget.metodos.where((m) => !m.esCredito || (widget.cliente != null && widget.cliente!.limiteCredito > 0)).toList();
+    _controllers = {for (final m in _metodos) m.id: TextEditingController()};
     // Atajo comun: todo en efectivo.
-    final efectivo = widget.metodos.where((m) => m.esEfectivo).firstOrNull;
+    final efectivo = _metodos.where((m) => m.esEfectivo).firstOrNull;
     if (efectivo != null) _controllers[efectivo.id]!.text = widget.total.toStringAsFixed(2);
   }
 
@@ -47,12 +57,18 @@ class _CobroDialogState extends State<CobroDialog> {
 
   /// Calcula pagos aplicados, cambio y si el cobro es valido con lo capturado.
   ({List<PagoCaptura> pagos, double cambio, double faltante, bool valido}) _calcular() {
+    // El credito pedido no puede pasar del disponible del cliente.
+    final credito = _metodos.where((m) => m.esCredito).fold(0.0, (s, m) => s + redondear2(_monto(m)));
+    if (credito > _creditoDisponible) {
+      return (pagos: const <PagoCaptura>[], cambio: 0, faltante: 0, valido: false);
+    }
+
     final pagos = <PagoCaptura>[];
     var otros = 0.0;
     var efectivoRecibido = 0.0;
     String? efectivoId;
 
-    for (final m in widget.metodos) {
+    for (final m in _metodos) {
       final monto = redondear2(_monto(m));
       if (monto <= 0) continue;
       if (m.esEfectivo) {
@@ -98,7 +114,12 @@ class _CobroDialogState extends State<CobroDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              for (final m in widget.metodos)
+              if (widget.cliente != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text('Cliente: ${widget.cliente!.nombre}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              for (final m in _metodos)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),
                   child: Row(
@@ -110,7 +131,9 @@ class _CobroDialogState extends State<CobroDialog> {
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
                           decoration: InputDecoration(
                             labelText: m.esEfectivo ? 'Efectivo recibido' : m.nombre,
-                            helperText: m.disponible ? null : 'Disponible con clientes (Sprint 7)',
+                            helperText: m.esCredito
+                                ? 'Disponible: ${dinero(_creditoDisponible)}'
+                                : null,
                             prefixText: '\$ ',
                           ),
                           onChanged: (_) => setState(() {}),
@@ -122,7 +145,8 @@ class _CobroDialogState extends State<CobroDialog> {
                             for (final c in _controllers.values) {
                               c.clear();
                             }
-                            _controllers[m.id]!.text = widget.total.toStringAsFixed(2);
+                            final tope = m.esCredito && _creditoDisponible < widget.total ? _creditoDisponible : widget.total;
+                            _controllers[m.id]!.text = tope.toStringAsFixed(2);
                           }),
                           child: const Text('Todo'),
                         ),
@@ -130,7 +154,10 @@ class _CobroDialogState extends State<CobroDialog> {
                   ),
                 ),
               const Divider(),
-              if (calculo.faltante > 0)
+              if (_metodos.where((m) => m.esCredito).fold(0.0, (s, m) => s + redondear2(_monto(m))) > _creditoDisponible)
+                Text('El credito pedido excede el disponible (${dinero(_creditoDisponible)}).',
+                    style: const TextStyle(color: Colors.red))
+              else if (calculo.faltante > 0)
                 Text('Falta ${dinero(calculo.faltante)}', style: const TextStyle(color: Colors.red))
               else if (calculo.faltante < 0)
                 Text('Los pagos sin efectivo exceden el total por ${dinero(-calculo.faltante)}',

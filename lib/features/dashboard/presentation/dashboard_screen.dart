@@ -4,6 +4,7 @@ import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../catalogos/presentation/catalogos_screen.dart';
+import '../../clientes/presentation/clientes_screen.dart';
 import '../../inventario/presentation/inventario_screen.dart';
 import '../../negocio/data/negocio_api.dart';
 import '../../negocio/data/negocio_dto.dart';
@@ -96,6 +97,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                   icon: const Icon(Icons.receipt_long_outlined),
                   label: const Text('Ventas del dia'),
+                ),
+                const SizedBox(height: 12),
+              ],
+              if (usuario.tienePermiso('clientes.administrar') || usuario.tienePermiso('creditos.administrar')) ...[
+                OutlinedButton.icon(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const ClientesScreen()),
+                  ),
+                  icon: const Icon(Icons.people_outline),
+                  label: const Text('Clientes y credito'),
                 ),
                 const SizedBox(height: 12),
               ],

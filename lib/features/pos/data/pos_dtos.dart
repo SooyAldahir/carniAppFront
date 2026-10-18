@@ -60,6 +60,7 @@ class MetodoPagoDto {
   MetodoPagoDto({required this.id, required this.nombre, required this.disponible});
 
   bool get esEfectivo => nombre.toLowerCase() == 'efectivo';
+  bool get esCredito => nombre.toLowerCase() == 'credito';
 
   factory MetodoPagoDto.fromJson(Map<String, dynamic> json) => MetodoPagoDto(
         id: json['id'] as String,
@@ -160,6 +161,7 @@ class VentaDto {
   final double total;
   final List<VentaLineaDto> lineas;
   final List<VentaPagoDto> pagos;
+  final String? clienteNombre;
 
   VentaDto({
     required this.id,
@@ -173,6 +175,7 @@ class VentaDto {
     required this.total,
     required this.lineas,
     required this.pagos,
+    this.clienteNombre,
   });
 
   bool get anulada => estado == 'Anulada';
@@ -193,6 +196,7 @@ class VentaDto {
         pagos: (json['pagos'] as List<dynamic>)
             .map((e) => VentaPagoDto.fromJson(e as Map<String, dynamic>))
             .toList(),
+        clienteNombre: json['clienteNombre'] as String?,
       );
 }
 
