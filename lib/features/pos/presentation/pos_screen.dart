@@ -35,6 +35,8 @@ class _PosScreenState extends State<PosScreen> {
   DescuentoCaptura? _descuentoTotalCaptura;
   ClienteDto? _cliente;
   double _recargoCreditoPct = 0;
+  double _recargoMaximoPct = 30;
+  late bool _puedeAjustarRecargo;
   String? _nota;
   late bool _puedeDescuento;
   bool _cargando = true;
@@ -46,6 +48,7 @@ class _PosScreenState extends State<PosScreen> {
     super.initState();
     _auth = context.read<AuthProvider>();
     final usuario = _auth.usuarioActual;
+    _puedeAjustarRecargo = usuario?.tienePermiso('pos.recargo.ajustar') ?? false;
     _puedeDescuento = (usuario?.tienePermiso('pos.descuento') ?? false) ||
         (usuario?.tienePermiso('pos.descuento.alto') ?? false);
     _cargar();
@@ -119,7 +122,9 @@ class _PosScreenState extends State<PosScreen> {
       setState(() {
         _catalogo = resultados[0] as List<CortePosDto>;
         _metodos = resultados[1] as List<MetodoPagoDto>;
-        _recargoCreditoPct = (resultados[2] as PosConfigDto).recargoCreditoPorcentaje;
+        final config = resultados[2] as PosConfigDto;
+        _recargoCreditoPct = config.recargoCreditoPorcentaje;
+        _recargoMaximoPct = config.recargoCreditoMaximoPorcentaje;
         _cargando = false;
       });
     } on ApiException catch (e) {
@@ -159,7 +164,11 @@ class _PosScreenState extends State<PosScreen> {
 
     final resultado = await showDialog<ResultadoCobro>(
       context: context,
-      builder: (_) => CobroDialog(total: _total, metodos: _metodos, cliente: _cliente, recargoCreditoPorcentaje: _recargoCreditoPct),
+      builder: (_) => CobroDialog(total: _total, metodos: _metodos, cliente: _cliente,
+        recargoCreditoPorcentaje: _recargoCreditoPct,
+        puedeAjustarRecargo: _puedeAjustarRecargo,
+        recargoMaximo: _recargoMaximoPct,
+      ),
     );
     if (resultado == null) return;
 
@@ -173,6 +182,7 @@ class _PosScreenState extends State<PosScreen> {
         descuentoTotal: _descuentoGlobal,
         clienteId: _cliente?.id,
         nota: _nota,
+        recargoCreditoPorcentaje: resultado.recargoPorcentaje,
       );
       if (!mounted) return;
       setState(() {

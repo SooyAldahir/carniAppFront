@@ -27,6 +27,7 @@ class PosApi {
     double descuentoTotal = 0,
     String? clienteId,
     String? nota,
+    double? recargoCreditoPorcentaje,
   }) async {
     final json = await _client.postJson(
       '/api/ventas',
@@ -38,6 +39,7 @@ class PosApi {
         'descuentoTotal': descuentoTotal,
         'clienteId': clienteId,
         'nota': nota,
+        'recargoCreditoPorcentaje': recargoCreditoPorcentaje,
       },
       token: token,
     );

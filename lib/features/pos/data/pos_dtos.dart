@@ -57,10 +57,15 @@ class PosConfigDto {
   /// % que se suma a lo fiado. Siempre se muestra al cliente en el ticket.
   final double recargoCreditoPorcentaje;
 
-  PosConfigDto({required this.recargoCreditoPorcentaje});
+  /// Tope del % que se puede fijar al cobrar (con permiso).
+  final double recargoCreditoMaximoPorcentaje;
 
-  factory PosConfigDto.fromJson(Map<String, dynamic> json) =>
-      PosConfigDto(recargoCreditoPorcentaje: (json['recargoCreditoPorcentaje'] as num).toDouble());
+  PosConfigDto({required this.recargoCreditoPorcentaje, this.recargoCreditoMaximoPorcentaje = 30});
+
+  factory PosConfigDto.fromJson(Map<String, dynamic> json) => PosConfigDto(
+        recargoCreditoPorcentaje: (json['recargoCreditoPorcentaje'] as num).toDouble(),
+        recargoCreditoMaximoPorcentaje: (json['recargoCreditoMaximoPorcentaje'] as num?)?.toDouble() ?? 30,
+      );
 }
 
 /// Cargo por credito sobre lo fiado, redondeado al centavo como lo hace el servidor.

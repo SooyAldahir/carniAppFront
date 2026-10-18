@@ -7,7 +7,10 @@ class ResultadoCobro {
   final List<PagoCaptura> pagos;
   final double cambio;
 
-  ResultadoCobro(this.pagos, this.cambio);
+  /// Solo si el cajero cambio el % de cargo por credito en este cobro; null = el de siempre.
+  final double? recargoPorcentaje;
+
+  ResultadoCobro(this.pagos, this.cambio, {this.recargoPorcentaje});
 }
 
 /// RF-POS-008: pago simple o mixto. En Efectivo se captura lo que entrega el
@@ -24,12 +27,18 @@ class CobroDialog extends StatefulWidget {
   /// % de cargo sobre lo que se fia (lo define el servidor y se imprime en el ticket).
   final double recargoCreditoPorcentaje;
 
+  /// Con 'pos.recargo.ajustar' el cajero puede cambiar el % solo en este cobro (0..[recargoMaximo]).
+  final bool puedeAjustarRecargo;
+  final double recargoMaximo;
+
   const CobroDialog({
     super.key,
     required this.total,
     required this.metodos,
     this.cliente,
     this.recargoCreditoPorcentaje = 0,
+    this.puedeAjustarRecargo = false,
+    this.recargoMaximo = 30,
   });
 
   @override
@@ -44,15 +53,32 @@ class _CobroDialogState extends State<CobroDialog> {
 
   double get _creditoDisponible => widget.cliente?.creditoDisponible ?? 0;
 
+  late final TextEditingController _pctCtrl;
+
+  String _textoPct(double v) => v % 1 == 0 ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
+
+  /// Porcentaje vigente en este cobro: el capturado (si puede ajustar) o el predeterminado.
+  double get _pct {
+    if (!widget.puedeAjustarRecargo) return widget.recargoCreditoPorcentaje;
+    return double.tryParse(_pctCtrl.text.trim()) ?? -1;
+  }
+
+  /// Para calculos que no deben romperse mientras el campo esta a medio escribir.
+  double get _pctSeguro => _pctValido ? _pct : widget.recargoCreditoPorcentaje;
+
+  bool get _pctValido => _pct >= 0 && _pct <= widget.recargoMaximo;
+  bool get _pctCambiado => widget.puedeAjustarRecargo && _pctValido && (_pct - widget.recargoCreditoPorcentaje).abs() > 1e-9;
+
   /// Lo que se pide fiar (sin cargo) y el cargo que el servidor le sumara.
   double get _creditoBase =>
       redondear2(_metodos.where((m) => m.esCredito).fold(0.0, (s, m) => s + redondear2(_monto(m))));
-  double get _recargo => recargoDeCredito(_creditoBase, widget.recargoCreditoPorcentaje);
-  bool get _excedeCredito => _creditoBase > 0 && _creditoBase + _recargo > _creditoDisponible + 1e-9;
+  double get _recargo => _pctValido ? recargoDeCredito(_creditoBase, _pct) : 0;
+  bool get _excedeCredito => _creditoBase > 0 && _pctValido && _creditoBase + _recargo > _creditoDisponible + 1e-9;
 
   @override
   void initState() {
     super.initState();
+    _pctCtrl = TextEditingController(text: _textoPct(widget.recargoCreditoPorcentaje));
     _metodos = widget.metodos.where((m) => !m.esCredito || (widget.cliente != null && widget.cliente!.limiteCredito > 0)).toList();
     _controllers = {for (final m in _metodos) m.id: TextEditingController()};
     // Atajo comun: todo en efectivo.
@@ -62,6 +88,7 @@ class _CobroDialogState extends State<CobroDialog> {
 
   @override
   void dispose() {
+    _pctCtrl.dispose();
     for (final c in _controllers.values) {
       c.dispose();
     }
@@ -73,7 +100,7 @@ class _CobroDialogState extends State<CobroDialog> {
   /// Calcula pagos aplicados, cambio y si el cobro es valido con lo capturado.
   ({List<PagoCaptura> pagos, double cambio, double faltante, bool valido}) _calcular() {
     // El credito pedido no puede pasar del disponible del cliente.
-    if (_excedeCredito) {
+    if (_excedeCredito || (_creditoBase > 0 && !_pctValido)) {
       return (pagos: const <PagoCaptura>[], cambio: 0, faltante: 0, valido: false);
     }
 
@@ -147,7 +174,7 @@ class _CobroDialogState extends State<CobroDialog> {
                             labelText: m.esEfectivo ? 'Efectivo recibido' : m.nombre,
                             helperText: m.esCredito
                                 ? 'Disponible: ${dinero(_creditoDisponible)}'
-                                    '${widget.recargoCreditoPorcentaje > 0 ? ' · cargo ${widget.recargoCreditoPorcentaje.toStringAsFixed(widget.recargoCreditoPorcentaje % 1 == 0 ? 0 : 2)}%' : ''}'
+                                    '${_pct > 0 ? ' · cargo ${_pct.toStringAsFixed(_pct % 1 == 0 ? 0 : 2)}%' : ''}'
                                 : null,
                             prefixText: '\$ ',
                           ),
@@ -161,8 +188,8 @@ class _CobroDialogState extends State<CobroDialog> {
                               c.clear();
                             }
                             final tope = m.esCredito
-                                ? (maximoFiable(_creditoDisponible, widget.recargoCreditoPorcentaje) < widget.total
-                                    ? maximoFiable(_creditoDisponible, widget.recargoCreditoPorcentaje)
+                                ? (maximoFiable(_creditoDisponible, _pctSeguro) < widget.total
+                                    ? maximoFiable(_creditoDisponible, _pctSeguro)
                                     : widget.total)
                                 : widget.total;
                             _controllers[m.id]!.text = tope.toStringAsFixed(2);
@@ -173,6 +200,21 @@ class _CobroDialogState extends State<CobroDialog> {
                   ),
                 ),
               const Divider(),
+              if (widget.puedeAjustarRecargo && _metodos.any((m) => m.esCredito))
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: TextField(
+                    controller: _pctCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: InputDecoration(
+                      labelText: 'Cargo por credito (%)',
+                      helperText: 'Predeterminado ${_textoPct(widget.recargoCreditoPorcentaje)}%. Solo cambialo si hace falta.',
+                      suffixText: '%',
+                      errorText: _pctValido ? null : 'Entre 0 y ${_textoPct(widget.recargoMaximo)}',
+                    ),
+                    onChanged: (_) => setState(() {}),
+                  ),
+                ),
               if (_creditoBase > 0 && _recargo > 0)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 4),
@@ -200,7 +242,8 @@ class _CobroDialogState extends State<CobroDialog> {
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
         FilledButton(
           onPressed: calculo.valido
-              ? () => Navigator.pop(context, ResultadoCobro(calculo.pagos, calculo.cambio))
+              ? () => Navigator.pop(context, ResultadoCobro(calculo.pagos, calculo.cambio,
+                  recargoPorcentaje: _creditoBase > 0 && _pctCambiado ? _pct : null))
               : null,
           child: const Text('Registrar venta'),
         ),
