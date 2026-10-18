@@ -29,6 +29,9 @@ class CobroDialog extends StatefulWidget {
 
   /// Con 'pos.recargo.ajustar' el cajero puede cambiar el % solo en este cobro (0..[recargoMaximo]).
   final bool puedeAjustarRecargo;
+
+  /// Con 'pos.recargo.reducir' solo puede bajarlo (de 0 al predeterminado).
+  final bool puedeReducirRecargo;
   final double recargoMaximo;
 
   const CobroDialog({
@@ -38,6 +41,7 @@ class CobroDialog extends StatefulWidget {
     this.cliente,
     this.recargoCreditoPorcentaje = 0,
     this.puedeAjustarRecargo = false,
+    this.puedeReducirRecargo = false,
     this.recargoMaximo = 30,
   });
 
@@ -55,19 +59,24 @@ class _CobroDialogState extends State<CobroDialog> {
 
   late final TextEditingController _pctCtrl;
 
+  bool get _puedeEditarPct => widget.puedeAjustarRecargo || widget.puedeReducirRecargo;
+
+  /// Tope del campo: el maximo configurado si puede subir; el predeterminado si solo puede bajar.
+  double get _pctMax => widget.puedeAjustarRecargo ? widget.recargoMaximo : widget.recargoCreditoPorcentaje;
+
   String _textoPct(double v) => v % 1 == 0 ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
 
   /// Porcentaje vigente en este cobro: el capturado (si puede ajustar) o el predeterminado.
   double get _pct {
-    if (!widget.puedeAjustarRecargo) return widget.recargoCreditoPorcentaje;
+    if (!_puedeEditarPct) return widget.recargoCreditoPorcentaje;
     return double.tryParse(_pctCtrl.text.trim()) ?? -1;
   }
 
   /// Para calculos que no deben romperse mientras el campo esta a medio escribir.
   double get _pctSeguro => _pctValido ? _pct : widget.recargoCreditoPorcentaje;
 
-  bool get _pctValido => _pct >= 0 && _pct <= widget.recargoMaximo;
-  bool get _pctCambiado => widget.puedeAjustarRecargo && _pctValido && (_pct - widget.recargoCreditoPorcentaje).abs() > 1e-9;
+  bool get _pctValido => _pct >= 0 && _pct <= _pctMax;
+  bool get _pctCambiado => _puedeEditarPct && _pctValido && (_pct - widget.recargoCreditoPorcentaje).abs() > 1e-9;
 
   /// Lo que se pide fiar (sin cargo) y el cargo que el servidor le sumara.
   double get _creditoBase =>
@@ -200,7 +209,7 @@ class _CobroDialogState extends State<CobroDialog> {
                   ),
                 ),
               const Divider(),
-              if (widget.puedeAjustarRecargo && _metodos.any((m) => m.esCredito))
+              if (_puedeEditarPct && _metodos.any((m) => m.esCredito))
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),
                   child: TextField(
@@ -210,7 +219,7 @@ class _CobroDialogState extends State<CobroDialog> {
                       labelText: 'Cargo por credito (%)',
                       helperText: 'Predeterminado ${_textoPct(widget.recargoCreditoPorcentaje)}%. Solo cambialo si hace falta.',
                       suffixText: '%',
-                      errorText: _pctValido ? null : 'Entre 0 y ${_textoPct(widget.recargoMaximo)}',
+                      errorText: _pctValido ? null : 'Entre 0 y ${_textoPct(_pctMax)}',
                     ),
                     onChanged: (_) => setState(() {}),
                   ),

@@ -37,6 +37,7 @@ class _PosScreenState extends State<PosScreen> {
   double _recargoCreditoPct = 0;
   double _recargoMaximoPct = 30;
   late bool _puedeAjustarRecargo;
+  late bool _puedeReducirRecargo;
   String? _nota;
   late bool _puedeDescuento;
   bool _cargando = true;
@@ -49,6 +50,7 @@ class _PosScreenState extends State<PosScreen> {
     _auth = context.read<AuthProvider>();
     final usuario = _auth.usuarioActual;
     _puedeAjustarRecargo = usuario?.tienePermiso('pos.recargo.ajustar') ?? false;
+    _puedeReducirRecargo = usuario?.tienePermiso('pos.recargo.reducir') ?? false;
     _puedeDescuento = (usuario?.tienePermiso('pos.descuento') ?? false) ||
         (usuario?.tienePermiso('pos.descuento.alto') ?? false);
     _cargar();
@@ -167,6 +169,7 @@ class _PosScreenState extends State<PosScreen> {
       builder: (_) => CobroDialog(total: _total, metodos: _metodos, cliente: _cliente,
         recargoCreditoPorcentaje: _recargoCreditoPct,
         puedeAjustarRecargo: _puedeAjustarRecargo,
+        puedeReducirRecargo: _puedeReducirRecargo,
         recargoMaximo: _recargoMaximoPct,
       ),
     );
