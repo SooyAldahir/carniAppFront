@@ -10,6 +10,7 @@ import '../../negocio/data/negocio_api.dart';
 import '../../negocio/data/negocio_dto.dart';
 import '../../pos/presentation/pos_screen.dart';
 import '../../pos/presentation/ventas_screen.dart';
+import '../../ventafacil/presentation/venta_facil_screen.dart';
 
 /// Dashboard: muestra la marca del negocio (RF-CONFIG-003), los datos
 /// de sesion del usuario autenticado y accesos a Catálogo e
@@ -125,6 +126,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 icon: const Icon(Icons.warehouse_outlined),
                 label: const Text('Inventario'),
               ),
+              if (usuario.tienePermiso('ventafacil.registrar')) ...[
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const VentaFacilScreen()),
+                  ),
+                  icon: const Icon(Icons.pets_outlined),
+                  label: const Text('Venta Facil (registrar animal)'),
+                ),
+              ],
               const SizedBox(height: 24),
               const Text(
                 'Los demas modulos (Clientes, Caja...) llegan en los '
