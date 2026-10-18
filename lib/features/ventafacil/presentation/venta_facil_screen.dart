@@ -31,6 +31,9 @@ class _VentaFacilScreenState extends State<VentaFacilScreen> {
   List<TipoAnimalDto> _tipos = [];
   List<LoteDto> _lotes = [];
   String? _tipoId;
+  RendimientosDto? _cortes;                       // cortes por peso del tipo + lo aprendido
+  final Map<String, TextEditingController> _kgCtrls = {};
+  bool _pesar = true;                             // capturar los kilos reales de cada corte
   RepartoDto? _reparto;
   bool _cargando = true;
   bool _trabajando = false;
@@ -47,8 +50,40 @@ class _VentaFacilScreenState extends State<VentaFacilScreen> {
   void dispose() {
     _pesoCtrl.dispose();
     _costoCtrl.dispose();
+    _limpiarKg();
     super.dispose();
   }
+
+  void _limpiarKg() {
+    for (final c in _kgCtrls.values) {
+      c.dispose();
+    }
+    _kgCtrls.clear();
+  }
+
+  /// Carga los cortes del tipo elegido y decide si hace falta pesar:
+  /// con suficientes lotes pesados el sistema ya estima solo.
+  Future<void> _cargarCortes() async {
+    final id = _tipoId;
+    if (id == null) return;
+    try {
+      final datos = await _api.cortes(_token, id);
+      if (!mounted || _tipoId != id) return;
+      _limpiarKg();
+      for (final c in datos.cortes) {
+        _kgCtrls[c.corteId] = TextEditingController();
+      }
+      setState(() {
+        _cortes = datos;
+        _pesar = !datos.usaAprendido;
+        _reparto = null;
+      });
+    } on ApiException catch (e) {
+      _avisar(e.mensaje);
+    }
+  }
+
+  Map<String, double>? _kgCapturados() => _pesar ? kgDeTextos({for (final e in _kgCtrls.entries) e.key: e.value.text}) : <String, double>{};
 
   bool get _puedeConfigurar => _auth.usuarioActual?.tienePermiso('catalogo.administrar') ?? false;
 
@@ -67,6 +102,7 @@ class _VentaFacilScreenState extends State<VentaFacilScreen> {
         _tipoId ??= tipos.isEmpty ? null : tipos.first.id;
         _cargando = false;
       });
+      await _cargarCortes();
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -94,6 +130,14 @@ class _VentaFacilScreenState extends State<VentaFacilScreen> {
     } else if (costo == null || costo < 0) {
       problema = 'Escribe cuanto costo el animal.';
     }
+    final kgs = _kgCapturados();
+    if (problema == null && kgs == null) {
+      problema = 'Revisa los kilos de los cortes: deben ser numeros positivos.';
+    } else if (problema == null && _pesar && kgs!.isEmpty) {
+      problema = 'Captura los kilos de al menos un corte, o desactiva "Pesar cortes".';
+    } else if (problema == null && _pesar && kgs!.values.fold(0.0, (a, b) => a + b) > peso!) {
+      problema = 'Los cortes suman mas que el peso del animal.';
+    }
     if (problema != null) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(problema)));
       return null;
@@ -106,7 +150,7 @@ class _VentaFacilScreenState extends State<VentaFacilScreen> {
     if (datos == null) return;
     setState(() => _trabajando = true);
     try {
-      final reparto = await _api.previsualizar(_token, _tipoId!, datos.peso, datos.costo);
+      final reparto = await _api.previsualizar(_token, _tipoId!, datos.peso, datos.costo, kgPorCorte: _kgCapturados());
       if (!mounted) return;
       setState(() => _reparto = reparto);
     } on ApiException catch (e) {
@@ -126,9 +170,8 @@ class _VentaFacilScreenState extends State<VentaFacilScreen> {
       builder: (ctx) => AlertDialog(
         title: const Text('Registrar lote'),
         content: Text(
-          'Se agregaran ${reparto.kgAsignados.toStringAsFixed(3)} kg estimados de '
-          '${reparto.tipoAnimalNombre} al inventario.\n\nEl reparto es una estimacion; '
-          'se puede corregir despues con un ajuste de inventario.',
+          'Se agregaran ${reparto.kgAsignados.toStringAsFixed(3)} kg de '
+          '${reparto.tipoAnimalNombre} al inventario.\n\n${reparto.esEstimado ? 'El reparto es una estimacion; se puede corregir despues con un ajuste de inventario.' : 'Los kilos son los que pesaste; el sistema los usara para aprender el rendimiento.'}',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
@@ -140,9 +183,12 @@ class _VentaFacilScreenState extends State<VentaFacilScreen> {
 
     setState(() => _trabajando = true);
     try {
-      await _api.registrarLote(_token, _tipoId!, datos.peso, datos.costo);
+      await _api.registrarLote(_token, _tipoId!, datos.peso, datos.costo, kgPorCorte: _kgCapturados());
       _pesoCtrl.clear();
       _costoCtrl.clear();
+      for (final c in _kgCtrls.values) {
+        c.clear();
+      }
       if (!mounted) return;
       setState(() => _reparto = null);
       _avisar('Lote registrado; el inventario ya esta actualizado.');
@@ -162,6 +208,66 @@ class _VentaFacilScreenState extends State<VentaFacilScreen> {
   Future<void> _abrirRendimientos() async {
     await Navigator.of(context).push(MaterialPageRoute(builder: (_) => RendimientosScreen(tipoInicialId: _tipoId)));
     if (mounted) setState(() => _reparto = null); // los porcentajes pudieron cambiar
+  }
+
+  Widget _seccionPesar() {
+    final cortes = _cortes!;
+    final suma = _kgCapturados()?.values.fold(0.0, (a, b) => a + b) ?? 0.0;
+    final peso = parsearDecimal(_pesoCtrl.text);
+    final mensaje = cortes.usaAprendido
+        ? 'El sistema ya conoce el rendimiento (${cortes.lotesMedidos} lotes pesados): no necesitas pesar. '
+            'Si quieres, puedes pesar este animal para afinar los datos.'
+        : 'Aun estoy aprendiendo (${cortes.lotesMedidos} de ${cortes.lotesParaAprender} lotes pesados). '
+            'Pesa los cortes de este animal; despues de ${cortes.lotesParaAprender} lotes el sistema estimara solo.';
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(mensaje),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Pesar cortes (kg reales)'),
+              value: _pesar,
+              onChanged: (v) => setState(() {
+                _pesar = v;
+                _reparto = null;
+              }),
+            ),
+            if (_pesar) ...[
+              for (final c in cortes.cortes)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    children: [
+                      Expanded(child: Text(c.corteNombre)),
+                      SizedBox(
+                        width: 120,
+                        child: TextField(
+                          controller: _kgCtrls[c.corteId],
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: const InputDecoration(suffixText: 'kg', border: OutlineInputBorder(), isDense: true),
+                          onChanged: (_) => setState(() => _reparto = null),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 4),
+              Text(
+                'Suma: ${suma.toStringAsFixed(3)} kg'
+                '${peso != null ? '  -  Hueso / merma: ${(peso - suma).toStringAsFixed(3)} kg' : ''}',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: (peso != null && suma > peso) ? Colors.red.shade700 : null,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -198,10 +304,14 @@ class _VentaFacilScreenState extends State<VentaFacilScreen> {
                       value: _tipoId,
                       decoration: const InputDecoration(labelText: 'Tipo de animal', border: OutlineInputBorder()),
                       items: [for (final t in _tipos) DropdownMenuItem(value: t.id, child: Text(t.nombre))],
-                      onChanged: (v) => setState(() {
-                        _tipoId = v;
-                        _reparto = null;
-                      }),
+                      onChanged: (v) {
+                        setState(() {
+                          _tipoId = v;
+                          _reparto = null;
+                          _cortes = null;
+                        });
+                        _cargarCortes();
+                      },
                     ),
                     const SizedBox(height: 12),
                     TextField(
@@ -218,6 +328,7 @@ class _VentaFacilScreenState extends State<VentaFacilScreen> {
                       onChanged: (_) => setState(() => _reparto = null),
                     ),
                     const SizedBox(height: 12),
+                    if (_cortes != null) ...[_seccionPesar(), const SizedBox(height: 12)],
                     FilledButton.icon(
                       onPressed: _trabajando ? null : _calcular,
                       icon: const Icon(Icons.calculate_outlined),
@@ -245,7 +356,7 @@ class _VentaFacilScreenState extends State<VentaFacilScreen> {
                             '${l.fechaCompra.day.toString().padLeft(2, '0')}/'
                             '${l.fechaCompra.month.toString().padLeft(2, '0')}/${l.fechaCompra.year}'
                             ' - costo ${dinero(l.precioCompra)} (${dinero(l.costoPorKg)}/kg)'
-                            '${l.esEstimado ? ' - estimado' : ''}',
+                            '${l.esEstimado ? ' - estimado' : ' - pesado'}',
                           ),
                         ),
                       ),
@@ -269,7 +380,18 @@ class _RepartoCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Reparto estimado de ${reparto.tipoAnimalNombre}', style: Theme.of(context).textTheme.titleMedium),
+            Text(
+              reparto.esEstimado ? 'Reparto estimado de ${reparto.tipoAnimalNombre}' : 'Reparto pesado de ${reparto.tipoAnimalNombre}',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            Text(
+              switch (reparto.origen) {
+                'Aprendido' => 'Calculado con lo aprendido de ${reparto.lotesMedidos} lotes pesados',
+                'Pesado' => 'Con los kilos que capturaste',
+                _ => 'Calculado con los porcentajes configurados a mano',
+              },
+              style: const TextStyle(color: Colors.grey),
+            ),
             const SizedBox(height: 8),
             for (final l in reparto.lineas)
               Padding(
@@ -285,9 +407,9 @@ class _RepartoCard extends StatelessWidget {
             const Divider(),
             Text('Hueso / merma: ${reparto.kgMerma.toStringAsFixed(3)} kg'),
             Text('Costo por kg del animal: ${dinero(reparto.costoPorKg)}'),
-            Text('Venta estimada a precio base: ${dinero(reparto.ventaEstimadaTotal)}'),
+            Text('Venta ${reparto.esEstimado ? 'estimada' : ''} a precio base: ${dinero(reparto.ventaEstimadaTotal)}'),
             Text(
-              'Utilidad estimada: ${dinero(reparto.utilidadEstimada)}',
+              'Utilidad ${reparto.esEstimado ? 'estimada' : ''}: ${dinero(reparto.utilidadEstimada)}',
               style: TextStyle(
                 fontWeight: FontWeight.bold,
                 color: utilidadPositiva ? Colors.green.shade700 : Colors.red.shade700,

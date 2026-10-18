@@ -43,4 +43,46 @@ void main() {
     });
     expect(r.cortes.single.porcentaje, isNull);
   });
+
+  test('kgDeTextos ignora vacios y ceros, y devuelve null si hay algo invalido', () {
+    expect(kgDeTextos({'a': '12,5', 'b': '', 'c': '0'}), {'a': 12.5});
+    expect(kgDeTextos({'a': 'x'}), isNull);
+    expect(kgDeTextos({'a': '-3'}), isNull);
+    expect(kgDeTextos({}), isEmpty);
+  });
+
+  test('RendimientosDto lee lo aprendido', () {
+    final r = RendimientosDto.fromJson({
+      'tipoAnimalId': 't1',
+      'cortes': [
+        {'corteId': 'c1', 'corteNombre': 'Bistec', 'precioBase': 200, 'porcentaje': null, 'porcentajeAprendido': 24.5},
+      ],
+      'totalPorcentaje': 0,
+      'lotesMedidos': 3,
+      'lotesParaAprender': 3,
+      'usaAprendido': true,
+    });
+    expect(r.usaAprendido, isTrue);
+    expect(r.cortes.single.porcentajeAprendido, 24.5);
+  });
+
+  test('RepartoDto lee origen y si es estimado', () {
+    final r = RepartoDto.fromJson({
+      'tipoAnimalNombre': 'Res',
+      'pesoKg': 100,
+      'precioCompra': 5000,
+      'lineas': [],
+      'kgAsignados': 0,
+      'kgMerma': 100,
+      'costoPorKg': 50,
+      'ventaEstimadaTotal': 0,
+      'utilidadEstimada': -5000,
+      'esEstimado': false,
+      'origen': 'Pesado',
+      'lotesMedidos': 2,
+      'lotesParaAprender': 3,
+    });
+    expect(r.esEstimado, isFalse);
+    expect(r.origen, 'Pesado');
+  });
 }

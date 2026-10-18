@@ -165,7 +165,15 @@ class _RendimientosScreenState extends State<RendimientosScreen> {
                       _cargarTipo();
                     },
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
+                  if (_datos != null)
+                    Text(
+                      _datos!.usaAprendido
+                          ? 'El sistema ya aprendio de ${_datos!.lotesMedidos} lotes pesados y los usa en lugar de estos porcentajes.'
+                          : 'Estos porcentajes solo se usan mientras el sistema aprende (${_datos!.lotesMedidos} de ${_datos!.lotesParaAprender} lotes pesados). Son opcionales.',
+                      style: const TextStyle(color: Colors.grey),
+                    ),
+                  const SizedBox(height: 8),
                   Expanded(
                     child: _cargando
                         ? const Center(child: CircularProgressIndicator())
@@ -178,7 +186,19 @@ class _RendimientosScreenState extends State<RendimientosScreen> {
                                       padding: const EdgeInsets.symmetric(vertical: 4),
                                       child: Row(
                                         children: [
-                                          Expanded(child: Text(item.corteNombre)),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(item.corteNombre),
+                                                if (item.porcentajeAprendido != null)
+                                                  Text(
+                                                    'Aprendido: ${item.porcentajeAprendido!.toStringAsFixed(1)}%',
+                                                    style: const TextStyle(color: Colors.grey, fontSize: 12),
+                                                  ),
+                                              ],
+                                            ),
+                                          ),
                                           SizedBox(
                                             width: 110,
                                             child: TextField(

@@ -9,12 +9,14 @@ class RendimientoItemDto {
   final String corteNombre;
   final double precioBase;
   final double? porcentaje;
+  final double? porcentajeAprendido;
 
   RendimientoItemDto({
     required this.corteId,
     required this.corteNombre,
     required this.precioBase,
     required this.porcentaje,
+    this.porcentajeAprendido,
   });
 
   factory RendimientoItemDto.fromJson(Map<String, dynamic> json) => RendimientoItemDto(
@@ -22,6 +24,7 @@ class RendimientoItemDto {
         corteNombre: json['corteNombre'] as String,
         precioBase: _num(json['precioBase']),
         porcentaje: json['porcentaje'] == null ? null : _num(json['porcentaje']),
+        porcentajeAprendido: json['porcentajeAprendido'] == null ? null : _num(json['porcentajeAprendido']),
       );
 }
 
@@ -29,8 +32,20 @@ class RendimientosDto {
   final String tipoAnimalId;
   final List<RendimientoItemDto> cortes;
   final double totalPorcentaje;
+  final int lotesMedidos;
+  final int lotesParaAprender;
 
-  RendimientosDto({required this.tipoAnimalId, required this.cortes, required this.totalPorcentaje});
+  /// true cuando ya hay suficientes lotes pesados para estimar sin pesar.
+  final bool usaAprendido;
+
+  RendimientosDto({
+    required this.tipoAnimalId,
+    required this.cortes,
+    required this.totalPorcentaje,
+    this.lotesMedidos = 0,
+    this.lotesParaAprender = 3,
+    this.usaAprendido = false,
+  });
 
   factory RendimientosDto.fromJson(Map<String, dynamic> json) => RendimientosDto(
         tipoAnimalId: json['tipoAnimalId'] as String,
@@ -38,6 +53,9 @@ class RendimientosDto {
             .map((e) => RendimientoItemDto.fromJson(e as Map<String, dynamic>))
             .toList(),
         totalPorcentaje: _num(json['totalPorcentaje']),
+        lotesMedidos: (json['lotesMedidos'] as num?)?.toInt() ?? 0,
+        lotesParaAprender: (json['lotesParaAprender'] as num?)?.toInt() ?? 3,
+        usaAprendido: json['usaAprendido'] as bool? ?? false,
       );
 }
 
@@ -75,6 +93,12 @@ class RepartoDto {
   final double costoPorKg;
   final double ventaEstimadaTotal;
   final double utilidadEstimada;
+  final bool esEstimado;
+
+  /// "Pesado", "Aprendido" o "Configurado".
+  final String origen;
+  final int lotesMedidos;
+  final int lotesParaAprender;
 
   RepartoDto({
     required this.tipoAnimalNombre,
@@ -86,6 +110,10 @@ class RepartoDto {
     required this.costoPorKg,
     required this.ventaEstimadaTotal,
     required this.utilidadEstimada,
+    this.esEstimado = true,
+    this.origen = 'Configurado',
+    this.lotesMedidos = 0,
+    this.lotesParaAprender = 3,
   });
 
   factory RepartoDto.fromJson(Map<String, dynamic> json) => RepartoDto(
@@ -100,6 +128,10 @@ class RepartoDto {
         costoPorKg: _num(json['costoPorKg']),
         ventaEstimadaTotal: _num(json['ventaEstimadaTotal']),
         utilidadEstimada: _num(json['utilidadEstimada']),
+        esEstimado: json['esEstimado'] as bool? ?? true,
+        origen: json['origen'] as String? ?? 'Configurado',
+        lotesMedidos: (json['lotesMedidos'] as num?)?.toInt() ?? 0,
+        lotesParaAprender: (json['lotesParaAprender'] as num?)?.toInt() ?? 3,
       );
 }
 
@@ -136,3 +168,17 @@ class LoteDto {
 /// Suma de porcentajes escritos en pantalla (ignora vacios e invalidos).
 double sumaPorcentajes(Iterable<String> textos) =>
     textos.map((t) => parsearDecimal(t) ?? 0).fold(0.0, (a, b) => a + b);
+
+/// Kilos capturados por corte (corteId -> kg). Ignora vacios y ceros; null si algun texto
+/// no es un numero valido o es negativo.
+Map<String, double>? kgDeTextos(Map<String, String> textos) {
+  final resultado = <String, double>{};
+  for (final e in textos.entries) {
+    final t = e.value.trim();
+    if (t.isEmpty) continue;
+    final v = parsearDecimal(t);
+    if (v == null || v < 0) return null;
+    if (v > 0) resultado[e.key] = v;
+  }
+  return resultado;
+}
