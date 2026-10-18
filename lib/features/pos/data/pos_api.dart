@@ -23,6 +23,7 @@ class PosApi {
     required List<PagoCaptura> pagos,
     double descuentoTotal = 0,
     String? clienteId,
+    String? nota,
   }) async {
     final json = await _client.postJson(
       '/api/ventas',
@@ -33,6 +34,7 @@ class PosApi {
         'pagos': pagos.map((p) => {'metodoPagoId': p.metodoPagoId, 'importe': p.importe}).toList(),
         'descuentoTotal': descuentoTotal,
         'clienteId': clienteId,
+        'nota': nota,
       },
       token: token,
     );

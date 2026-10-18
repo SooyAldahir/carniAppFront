@@ -53,9 +53,13 @@ void main() {
           'lineas': [],
           'pagos': [],
           'clienteNombre': cliente,
+          'clienteDireccion': cliente == null ? null : 'Calle 5',
+          'nota': cliente == null ? null : 'Puerta de atras',
         };
 
     expect(VentaDto.fromJson(base('Dona Lupe')).clienteNombre, 'Dona Lupe');
+    expect(VentaDto.fromJson(base('Dona Lupe')).clienteDireccion, 'Calle 5');
+    expect(VentaDto.fromJson(base('Dona Lupe')).nota, 'Puerta de atras');
     expect(VentaDto.fromJson(base(null)).clienteNombre, isNull);
   });
 }

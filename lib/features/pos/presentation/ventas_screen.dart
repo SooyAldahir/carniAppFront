@@ -90,6 +90,8 @@ class _VentasScreenState extends State<VentasScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   if (venta.clienteNombre != null) Text('Cliente: ${venta.clienteNombre}'),
+                  if (venta.clienteDireccion != null) Text('Direccion: ${venta.clienteDireccion}'),
+                  if (venta.nota != null) Text('Nota: ${venta.nota}'),
                   Text('${_hora(venta.fecha)}  ·  ${venta.usuarioNombre ?? ''}',
                       style: const TextStyle(color: Colors.grey)),
                   const Divider(),

@@ -423,3 +423,52 @@ class _ImpresoraDialogState extends State<_ImpresoraDialog> {
     );
   }
 }
+
+/// Nota libre del ticket (se imprime en el). Devuelve '' si se borra y null si se cancela.
+Future<String?> pedirNota(BuildContext context, {String? actual}) =>
+    showDialog<String>(context: context, builder: (_) => _NotaDialog(actual: actual));
+
+class _NotaDialog extends StatefulWidget {
+  final String? actual;
+
+  const _NotaDialog({this.actual});
+
+  @override
+  State<_NotaDialog> createState() => _NotaDialogState();
+}
+
+class _NotaDialogState extends State<_NotaDialog> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.actual ?? '');
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Nota del ticket'),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        maxLength: 200,
+        maxLines: 3,
+        decoration: const InputDecoration(hintText: 'Ej. Entregar en la puerta de atras'),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+        if ((widget.actual ?? '').isNotEmpty)
+          TextButton(onPressed: () => Navigator.pop(context, ''), child: const Text('Quitar nota')),
+        FilledButton(onPressed: () => Navigator.pop(context, _controller.text.trim()), child: const Text('Guardar')),
+      ],
+    );
+  }
+}

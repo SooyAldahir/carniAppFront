@@ -162,6 +162,8 @@ class VentaDto {
   final List<VentaLineaDto> lineas;
   final List<VentaPagoDto> pagos;
   final String? clienteNombre;
+  final String? clienteDireccion;
+  final String? nota;
 
   VentaDto({
     required this.id,
@@ -176,6 +178,8 @@ class VentaDto {
     required this.lineas,
     required this.pagos,
     this.clienteNombre,
+    this.clienteDireccion,
+    this.nota,
   });
 
   bool get anulada => estado == 'Anulada';
@@ -197,6 +201,8 @@ class VentaDto {
             .map((e) => VentaPagoDto.fromJson(e as Map<String, dynamic>))
             .toList(),
         clienteNombre: json['clienteNombre'] as String?,
+        clienteDireccion: json['clienteDireccion'] as String?,
+        nota: json['nota'] as String?,
       );
 }
 

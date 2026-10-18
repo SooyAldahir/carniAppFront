@@ -34,6 +34,7 @@ class _PosScreenState extends State<PosScreen> {
   final FocusNode _busquedaFocus = FocusNode();
   DescuentoCaptura? _descuentoTotalCaptura;
   ClienteDto? _cliente;
+  String? _nota;
   late bool _puedeDescuento;
   bool _cargando = true;
   bool _cobrando = false;
@@ -169,12 +170,14 @@ class _PosScreenState extends State<PosScreen> {
         pagos: resultado.pagos,
         descuentoTotal: _descuentoGlobal,
         clienteId: _cliente?.id,
+        nota: _nota,
       );
       if (!mounted) return;
       setState(() {
         _carrito.clear();
         _descuentoTotalCaptura = null;
         _cliente = null;
+        _nota = null;
         _cobrando = false;
       });
       await _mostrarConfirmacion(venta, resultado.cambio);
@@ -269,6 +272,13 @@ class _PosScreenState extends State<PosScreen> {
         ),
       ],
     );
+  }
+
+  Future<void> _editarNota(VoidCallback? refrescar) async {
+    final nueva = await pedirNota(context, actual: _nota);
+    if (nueva == null) return;   // cancelado
+    setState(() => _nota = nueva.isEmpty ? null : nueva);
+    refrescar?.call();
   }
 
   Future<void> _elegirCliente(VoidCallback? refrescar) async {
@@ -370,6 +380,17 @@ class _PosScreenState extends State<PosScreen> {
                       : 'Cliente: ${_cliente!.nombre}'),
                 ),
               ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () => _editarNota(refrescar),
+                  icon: const Icon(Icons.sticky_note_2_outlined),
+                  label: Text(
+                    _nota == null ? 'Agregar nota al ticket' : 'Nota: $_nota',
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
               if (_descuentoTotal > 0) ...[
                 _filaTotal('Subtotal', dinero(_subtotalBruto)),
                 _filaTotal(
@@ -415,6 +436,7 @@ class _PosScreenState extends State<PosScreen> {
                           _carrito.clear();
                           _descuentoTotalCaptura = null;
                           _cliente = null;
+                          _nota = null;
                         });
                         refrescar?.call();
                       },
