@@ -6,6 +6,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../data/pos_api.dart';
 import '../data/pos_dtos.dart';
+import 'dialogos.dart';
 
 /// Ventas del dia (hora local de la caja) con detalle de ticket y anulacion
 /// con motivo obligatorio (RN-003, permiso 'pos.anular').
@@ -145,45 +146,13 @@ class _VentasScreenState extends State<VentasScreen> {
   }
 
   Future<void> _anular(VentaDto venta) async {
-    final controller = TextEditingController();
-    final formKey = GlobalKey<FormState>();
-
-    final confirmar = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Anular venta #${venta.folio}'),
-        content: Form(
-          key: formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('El stock de esta venta se repondra al inventario.'),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: controller,
-                autofocus: true,
-                maxLines: 2,
-                decoration: const InputDecoration(labelText: 'Motivo (obligatorio)'),
-                validator: (v) => (v == null || v.trim().isEmpty) ? 'El motivo es obligatorio' : null,
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
-          FilledButton(
-            onPressed: () {
-              if (formKey.currentState!.validate()) Navigator.pop(context, true);
-            },
-            child: const Text('Anular'),
-          ),
-        ],
-      ),
+    final motivo = await pedirMotivo(
+      context,
+      titulo: 'Anular venta #${venta.folio}',
+      descripcion: 'El stock de esta venta se repondra al inventario.',
+      textoConfirmar: 'Anular',
     );
-    final motivo = controller.text.trim();
-    controller.dispose();
-
-    if (confirmar != true) return;
+    if (motivo == null) return;
 
     try {
       final token = await _auth.obtenerTokenVigente();

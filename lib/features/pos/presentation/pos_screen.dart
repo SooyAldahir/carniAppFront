@@ -7,6 +7,7 @@ import '../../auth/providers/auth_provider.dart';
 import '../data/pos_api.dart';
 import '../data/pos_dtos.dart';
 import 'cobro_dialog.dart';
+import 'dialogos.dart';
 import 'ventas_screen.dart';
 
 /// RF-POS-001/002/008: punto de venta. Catalogo de cortes con precio y stock,
@@ -80,61 +81,7 @@ class _PosScreenState extends State<PosScreen> {
 
   Future<void> _agregar(CortePosDto corte, VoidCallback refrescar) async {
     final disponible = corte.stockActual - _enCarrito(corte);
-    final controller = TextEditingController();
-    final formKey = GlobalKey<FormState>();
-
-    final cantidad = await showDialog<double>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(corte.nombre),
-        content: Form(
-          key: formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('${dinero(corte.precioBase)} por ${corte.unidadCorta}  ·  '
-                  'disponible: ${cantidadTexto(disponible < 0 ? 0 : disponible)} ${corte.unidadCorta}'),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: controller,
-                autofocus: true,
-                keyboardType: TextInputType.numberWithOptions(decimal: !corte.esPieza),
-                decoration: InputDecoration(
-                  labelText: corte.esPieza ? 'Piezas' : 'Peso (kg)',
-                  suffixText: corte.unidadCorta,
-                ),
-                validator: (v) {
-                  final valor = double.tryParse((v ?? '').trim());
-                  if (valor == null || valor <= 0) return 'Captura una cantidad mayor a cero';
-                  if (corte.esPieza && valor != valor.truncateToDouble()) return 'Se vende por pieza: usa un entero';
-                  if (valor > disponible + 0.0000001) {
-                    return 'Solo hay ${cantidadTexto(disponible)} ${corte.unidadCorta} disponibles';
-                  }
-                  return null;
-                },
-                onFieldSubmitted: (_) {
-                  if (formKey.currentState!.validate()) {
-                    Navigator.pop(context, double.parse(controller.text.trim()));
-                  }
-                },
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
-          FilledButton(
-            onPressed: () {
-              if (formKey.currentState!.validate()) {
-                Navigator.pop(context, double.parse(controller.text.trim()));
-              }
-            },
-            child: const Text('Agregar'),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
+    final cantidad = await pedirCantidad(context, corte, disponible);
 
     if (cantidad == null) return;
 
