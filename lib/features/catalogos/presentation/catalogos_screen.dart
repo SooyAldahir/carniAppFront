@@ -155,6 +155,7 @@ class _CatalogosScreenState extends State<CatalogosScreen> with SingleTickerProv
         TextEditingController(text: existente != null ? existente.precioBase.toString() : '');
     final stockMinimoController =
         TextEditingController(text: existente != null ? existente.stockMinimo.toString() : '0');
+    final codigoController = TextEditingController(text: existente?.codigoBarras ?? '');
     String tipoAnimalId = existente?.tipoAnimalId ?? _tiposAnimal.first.id;
     String unidadVenta = existente?.unidadVenta ?? 'Peso';
     final formKey = GlobalKey<FormState>();
@@ -214,6 +215,14 @@ class _CatalogosScreenState extends State<CatalogosScreen> with SingleTickerProv
                       return (valor == null || valor < 0) ? 'Valor invalido' : null;
                     },
                   ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: codigoController,
+                    decoration: const InputDecoration(
+                      labelText: 'Codigo de barras (opcional)',
+                      helperText: 'Escanealo aqui con el lector',
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -236,6 +245,7 @@ class _CatalogosScreenState extends State<CatalogosScreen> with SingleTickerProv
     final precio = double.parse(precioController.text);
     final stockMinimo = double.parse(stockMinimoController.text);
     final nombre = nombreController.text.trim();
+    final codigo = codigoController.text.trim().isEmpty ? null : codigoController.text.trim();
 
     await _manejarError(() => existente == null
         ? _api.crearCorte(
@@ -245,6 +255,7 @@ class _CatalogosScreenState extends State<CatalogosScreen> with SingleTickerProv
             unidadVenta: unidadVenta,
             precioBase: precio,
             stockMinimo: stockMinimo,
+            codigoBarras: codigo,
           )
         : _api.actualizarCorte(
             _token,
@@ -254,6 +265,7 @@ class _CatalogosScreenState extends State<CatalogosScreen> with SingleTickerProv
             unidadVenta: unidadVenta,
             precioBase: precio,
             stockMinimo: stockMinimo,
+            codigoBarras: codigo,
           ));
   }
 

@@ -28,6 +28,8 @@ class _PosScreenState extends State<PosScreen> {
   List<MetodoPagoDto> _metodos = [];
   final List<LineaCarrito> _carrito = [];
   String _filtro = '';
+  final TextEditingController _busquedaCtrl = TextEditingController();
+  final FocusNode _busquedaFocus = FocusNode();
   DescuentoCaptura? _descuentoTotalCaptura;
   late bool _puedeDescuento;
   bool _cargando = true;
@@ -42,6 +44,51 @@ class _PosScreenState extends State<PosScreen> {
     _puedeDescuento = (usuario?.tienePermiso('pos.descuento') ?? false) ||
         (usuario?.tienePermiso('pos.descuento.alto') ?? false);
     _cargar();
+  }
+
+  @override
+  void dispose() {
+    _busquedaCtrl.dispose();
+    _busquedaFocus.dispose();
+    super.dispose();
+  }
+
+  /// RF-POS-006: los lectores USB/Bluetooth "escriben" el codigo y mandan Enter.
+  /// Si coincide con un corte se agrega solo (pieza = 1; peso = pide los kg);
+  /// si no coincide, se deja como texto de busqueda.
+  Future<void> _alEnviarBusqueda(String texto) async {
+    final corte = buscarPorCodigo(_catalogo, texto);
+    if (corte == null) {
+      if (texto.trim().isNotEmpty && RegExp(r'^\d{6,}$').hasMatch(texto.trim())) {
+        _avisar('Codigo ${texto.trim()} no registrado en el catalogo.');
+      }
+      _busquedaFocus.requestFocus();
+      return;
+    }
+    _busquedaCtrl.clear();
+    setState(() => _filtro = '');
+    if (corte.esPieza) {
+      final disponible = corte.stockActual - _enCarrito(corte);
+      if (disponible < 1) {
+        _avisar('${corte.nombre}: sin existencias.');
+      } else {
+        _sumarAlCarrito(corte, 1);
+      }
+    } else {
+      await _agregar(corte, () {});
+    }
+    _busquedaFocus.requestFocus();
+  }
+
+  void _sumarAlCarrito(CortePosDto corte, double cantidad) {
+    final existente = _carrito.where((l) => l.corte.corteId == corte.corteId).firstOrNull;
+    setState(() {
+      if (existente != null) {
+        existente.cantidad = redondear3(existente.cantidad + cantidad);
+      } else {
+        _carrito.add(LineaCarrito(corte, cantidad));
+      }
+    });
   }
 
   double get _subtotalBruto => redondear2(_carrito.fold(0.0, (suma, l) => suma + l.bruto));
@@ -95,14 +142,7 @@ class _PosScreenState extends State<PosScreen> {
 
     if (cantidad == null) return;
 
-    final existente = _carrito.where((l) => l.corte.corteId == corte.corteId).firstOrNull;
-    setState(() {
-      if (existente != null) {
-        existente.cantidad = redondear3(existente.cantidad + cantidad);
-      } else {
-        _carrito.add(LineaCarrito(corte, cantidad));
-      }
-    });
+    _sumarAlCarrito(corte, cantidad);
     refrescar();
   }
 
@@ -185,9 +225,14 @@ class _PosScreenState extends State<PosScreen> {
         Padding(
           padding: const EdgeInsets.all(12),
           child: TextField(
+            controller: _busquedaCtrl,
+            focusNode: _busquedaFocus,
+            autofocus: true,
+            textInputAction: TextInputAction.search,
+            onSubmitted: _alEnviarBusqueda,
             decoration: const InputDecoration(
               prefixIcon: Icon(Icons.search),
-              hintText: 'Buscar corte o animal',
+              hintText: 'Buscar corte o escanear codigo de barras',
               border: OutlineInputBorder(),
               isDense: true,
             ),

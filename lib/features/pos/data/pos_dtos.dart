@@ -15,6 +15,7 @@ class CortePosDto {
   final String unidadVenta;
   final double precioBase;
   final double stockActual;
+  final String? codigoBarras;
 
   CortePosDto({
     required this.corteId,
@@ -23,6 +24,7 @@ class CortePosDto {
     required this.unidadVenta,
     required this.precioBase,
     required this.stockActual,
+    this.codigoBarras,
   });
 
   bool get esPieza => unidadVenta == 'Pieza';
@@ -35,7 +37,19 @@ class CortePosDto {
         unidadVenta: json['unidadVenta'] as String,
         precioBase: (json['precioBase'] as num).toDouble(),
         stockActual: (json['stockActual'] as num).toDouble(),
+        codigoBarras: json['codigoBarras'] as String?,
       );
+}
+
+/// RF-POS-006: busca un corte por el codigo que leyo el escaner (coincidencia exacta,
+/// sin distinguir espacios alrededor). Devuelve null si ninguno coincide.
+CortePosDto? buscarPorCodigo(List<CortePosDto> catalogo, String lectura) {
+  final codigo = lectura.trim();
+  if (codigo.isEmpty) return null;
+  for (final c in catalogo) {
+    if (c.codigoBarras != null && c.codigoBarras == codigo) return c;
+  }
+  return null;
 }
 
 class MetodoPagoDto {

@@ -39,6 +39,7 @@ class CatalogoApi {
     required String unidadVenta,
     required double precioBase,
     required double stockMinimo,
+    String? codigoBarras,
   }) =>
       _client.postJson(
         '/api/cortes',
@@ -48,6 +49,7 @@ class CatalogoApi {
           'unidadVenta': unidadVenta,
           'precioBase': precioBase,
           'stockMinimo': stockMinimo,
+          'codigoBarras': codigoBarras,
         },
         token: token,
       );
@@ -60,6 +62,7 @@ class CatalogoApi {
     required String unidadVenta,
     required double precioBase,
     required double stockMinimo,
+    String? codigoBarras,
   }) =>
       _client.putJson(
         '/api/cortes/$id',
@@ -69,6 +72,7 @@ class CatalogoApi {
           'unidadVenta': unidadVenta,
           'precioBase': precioBase,
           'stockMinimo': stockMinimo,
+          'codigoBarras': codigoBarras,
         },
         token: token,
       );

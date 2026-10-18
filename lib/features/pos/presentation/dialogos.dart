@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/hardware/ticket_printer.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../../core/network/api_exception.dart';
@@ -300,6 +301,24 @@ class _TicketDialog extends StatelessWidget {
         ),
       ),
       actions: [
+        IconButton(
+          tooltip: 'Configurar impresora',
+          icon: const Icon(Icons.settings),
+          onPressed: () => showDialog<void>(context: context, builder: (_) => const _ImpresoraDialog()),
+        ),
+        TextButton.icon(
+          icon: const Icon(Icons.print),
+          label: const Text('Imprimir'),
+          onPressed: () async {
+            final messenger = ScaffoldMessenger.of(context);
+            try {
+              await TicketPrinter().imprimir(texto);
+              messenger.showSnackBar(const SnackBar(content: Text('Ticket enviado a la impresora.')));
+            } on ImpresoraException catch (e) {
+              messenger.showSnackBar(SnackBar(content: Text(e.mensaje)));
+            }
+          },
+        ),
         TextButton.icon(
           icon: const Icon(Icons.copy),
           label: const Text('Copiar'),
@@ -310,6 +329,96 @@ class _TicketDialog extends StatelessWidget {
           },
         ),
         FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Cerrar')),
+      ],
+    );
+  }
+}
+
+/// Configura la impresora termica de red (IP y puerto) y permite una impresion de prueba.
+class _ImpresoraDialog extends StatefulWidget {
+  const _ImpresoraDialog();
+
+  @override
+  State<_ImpresoraDialog> createState() => _ImpresoraDialogState();
+}
+
+class _ImpresoraDialogState extends State<_ImpresoraDialog> {
+  final _printer = TicketPrinter();
+  final _hostCtrl = TextEditingController();
+  final _puertoCtrl = TextEditingController(text: '9100');
+  String? _estado;
+  bool _ocupado = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _printer.cargarConfig().then((cfg) {
+      if (!mounted || cfg == null) return;
+      _hostCtrl.text = cfg.host;
+      _puertoCtrl.text = cfg.puerto.toString();
+    });
+  }
+
+  @override
+  void dispose() {
+    _hostCtrl.dispose();
+    _puertoCtrl.dispose();
+    super.dispose();
+  }
+
+  ImpresoraConfig get _config => ImpresoraConfig(_hostCtrl.text, int.tryParse(_puertoCtrl.text) ?? 0);
+
+  Future<void> _guardar({required bool probar}) async {
+    if (!_config.valida) {
+      setState(() => _estado = 'Escribe una IP y un puerto validos.');
+      return;
+    }
+    setState(() {
+      _ocupado = true;
+      _estado = null;
+    });
+    try {
+      await _printer.guardarConfig(_config);
+      if (probar) {
+        await _printer.imprimir('CarniApp\nPrueba de impresion\nAcentos: ñ á é\n', config: _config);
+      }
+      if (!mounted) return;
+      if (probar) {
+        setState(() => _estado = 'Prueba enviada. Configuracion guardada.');
+      } else {
+        Navigator.pop(context);
+      }
+    } on ImpresoraException catch (e) {
+      if (mounted) setState(() => _estado = e.mensaje);
+    } finally {
+      if (mounted) setState(() => _ocupado = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Impresora de tickets'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: _hostCtrl,
+            decoration: const InputDecoration(labelText: 'IP de la impresora', hintText: '192.168.1.50'),
+          ),
+          TextField(
+            controller: _puertoCtrl,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: 'Puerto (normalmente 9100)'),
+          ),
+          if (_estado != null)
+            Padding(padding: const EdgeInsets.only(top: 12), child: Text(_estado!)),
+        ],
+      ),
+      actions: [
+        TextButton(onPressed: _ocupado ? null : () => Navigator.pop(context), child: const Text('Cancelar')),
+        TextButton(onPressed: _ocupado ? null : () => _guardar(probar: true), child: const Text('Probar')),
+        FilledButton(onPressed: _ocupado ? null : () => _guardar(probar: false), child: const Text('Guardar')),
       ],
     );
   }

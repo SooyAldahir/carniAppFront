@@ -20,6 +20,7 @@ class CorteDto {
   final String unidadVenta;
   final double precioBase;
   final double stockMinimo;
+  final String? codigoBarras;
 
   CorteDto({
     required this.id,
@@ -29,6 +30,7 @@ class CorteDto {
     required this.unidadVenta,
     required this.precioBase,
     required this.stockMinimo,
+    this.codigoBarras,
   });
 
   factory CorteDto.fromJson(Map<String, dynamic> json) => CorteDto(
@@ -39,5 +41,6 @@ class CorteDto {
         unidadVenta: json['unidadVenta'] as String,
         precioBase: (json['precioBase'] as num).toDouble(),
         stockMinimo: (json['stockMinimo'] as num).toDouble(),
+        codigoBarras: json['codigoBarras'] as String?,
       );
 }
