@@ -17,6 +17,9 @@ class PosApi {
     return json.map((e) => MetodoPagoDto.fromJson(e as Map<String, dynamic>)).toList();
   }
 
+  Future<PosConfigDto> configuracion(String token) async =>
+      PosConfigDto.fromJson(await _client.getJson('/api/ventas/configuracion', token: token));
+
   Future<VentaDto> crearVenta(
     String token, {
     required List<LineaCarrito> lineas,

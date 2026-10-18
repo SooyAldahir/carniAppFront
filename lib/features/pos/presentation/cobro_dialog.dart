@@ -21,7 +21,16 @@ class CobroDialog extends StatefulWidget {
   /// Cliente de la venta. Sin cliente no se ofrece Credito (RF-CRED-001).
   final ClienteDto? cliente;
 
-  const CobroDialog({super.key, required this.total, required this.metodos, this.cliente});
+  /// % de cargo sobre lo que se fia (lo define el servidor y se imprime en el ticket).
+  final double recargoCreditoPorcentaje;
+
+  const CobroDialog({
+    super.key,
+    required this.total,
+    required this.metodos,
+    this.cliente,
+    this.recargoCreditoPorcentaje = 0,
+  });
 
   @override
   State<CobroDialog> createState() => _CobroDialogState();
@@ -34,6 +43,12 @@ class _CobroDialogState extends State<CobroDialog> {
   late final List<MetodoPagoDto> _metodos;
 
   double get _creditoDisponible => widget.cliente?.creditoDisponible ?? 0;
+
+  /// Lo que se pide fiar (sin cargo) y el cargo que el servidor le sumara.
+  double get _creditoBase =>
+      redondear2(_metodos.where((m) => m.esCredito).fold(0.0, (s, m) => s + redondear2(_monto(m))));
+  double get _recargo => recargoDeCredito(_creditoBase, widget.recargoCreditoPorcentaje);
+  bool get _excedeCredito => _creditoBase > 0 && _creditoBase + _recargo > _creditoDisponible + 1e-9;
 
   @override
   void initState() {
@@ -58,8 +73,7 @@ class _CobroDialogState extends State<CobroDialog> {
   /// Calcula pagos aplicados, cambio y si el cobro es valido con lo capturado.
   ({List<PagoCaptura> pagos, double cambio, double faltante, bool valido}) _calcular() {
     // El credito pedido no puede pasar del disponible del cliente.
-    final credito = _metodos.where((m) => m.esCredito).fold(0.0, (s, m) => s + redondear2(_monto(m)));
-    if (credito > _creditoDisponible) {
+    if (_excedeCredito) {
       return (pagos: const <PagoCaptura>[], cambio: 0, faltante: 0, valido: false);
     }
 
@@ -133,6 +147,7 @@ class _CobroDialogState extends State<CobroDialog> {
                             labelText: m.esEfectivo ? 'Efectivo recibido' : m.nombre,
                             helperText: m.esCredito
                                 ? 'Disponible: ${dinero(_creditoDisponible)}'
+                                    '${widget.recargoCreditoPorcentaje > 0 ? ' · cargo ${widget.recargoCreditoPorcentaje.toStringAsFixed(widget.recargoCreditoPorcentaje % 1 == 0 ? 0 : 2)}%' : ''}'
                                 : null,
                             prefixText: '\$ ',
                           ),
@@ -145,7 +160,11 @@ class _CobroDialogState extends State<CobroDialog> {
                             for (final c in _controllers.values) {
                               c.clear();
                             }
-                            final tope = m.esCredito && _creditoDisponible < widget.total ? _creditoDisponible : widget.total;
+                            final tope = m.esCredito
+                                ? (maximoFiable(_creditoDisponible, widget.recargoCreditoPorcentaje) < widget.total
+                                    ? maximoFiable(_creditoDisponible, widget.recargoCreditoPorcentaje)
+                                    : widget.total)
+                                : widget.total;
                             _controllers[m.id]!.text = tope.toStringAsFixed(2);
                           }),
                           child: const Text('Todo'),
@@ -154,8 +173,16 @@ class _CobroDialogState extends State<CobroDialog> {
                   ),
                 ),
               const Divider(),
-              if (_metodos.where((m) => m.esCredito).fold(0.0, (s, m) => s + redondear2(_monto(m))) > _creditoDisponible)
-                Text('El credito pedido excede el disponible (${dinero(_creditoDisponible)}).',
+              if (_creditoBase > 0 && _recargo > 0)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    'Cargo por credito: +${dinero(_recargo)}  ·  Total de la venta: ${dinero(widget.total + _recargo)}',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+              if (_excedeCredito)
+                Text('El credito pedido mas el cargo (${dinero(_creditoBase + _recargo)}) excede el disponible (${dinero(_creditoDisponible)}).',
                     style: const TextStyle(color: Colors.red))
               else if (calculo.faltante > 0)
                 Text('Falta ${dinero(calculo.faltante)}', style: const TextStyle(color: Colors.red))

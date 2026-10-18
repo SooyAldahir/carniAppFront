@@ -3,6 +3,8 @@ import 'package:carniapp/features/pos/data/pos_dtos.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  cargoCreditoTests();
+
   test('ClienteDto lee saldo y credito disponible del servidor', () {
     final c = ClienteDto.fromJson({
       'id': 'c1',
@@ -61,5 +63,35 @@ void main() {
     expect(VentaDto.fromJson(base('Dona Lupe')).clienteDireccion, 'Calle 5');
     expect(VentaDto.fromJson(base('Dona Lupe')).nota, 'Puerta de atras');
     expect(VentaDto.fromJson(base(null)).clienteNombre, isNull);
+  });
+}
+
+void cargoCreditoTests() {
+  group('cargo por credito', () {
+    test('recargoDeCredito redondea al centavo como el servidor', () {
+      expect(recargoDeCredito(300, 5), 15.0);
+      expect(recargoDeCredito(33.33, 5), 1.67);
+      expect(recargoDeCredito(100, 0), 0.0);
+    });
+
+    test('maximoFiable: fiado + cargo nunca pasa del disponible', () {
+      for (final disponible in [100.0, 299.25, 300.0, 57.13, 0.5]) {
+        final tope = maximoFiable(disponible, 5);
+        expect(tope + recargoDeCredito(tope, 5), lessThanOrEqualTo(disponible + 1e-9));
+        // y no se desperdicia mas de un par de centavos
+        expect(disponible - (tope + recargoDeCredito(tope, 5)), lessThan(0.03));
+      }
+      expect(maximoFiable(0, 5), 0.0);
+    });
+
+    test('VentaDto lee el cargo; sin el campo vale cero', () {
+      Map<String, dynamic> base(Object? recargo) => {
+            'id': 'v', 'folio': 1, 'fecha': '2026-10-18T20:00:00Z', 'estado': 'Completada',
+            'motivoAnulacion': null, 'usuarioNombre': null, 'subtotal': 300, 'descuento': 0,
+            'total': 315, 'lineas': [], 'pagos': [], 'recargoCredito': recargo,
+          };
+      expect(VentaDto.fromJson(base(15)).recargoCredito, 15.0);
+      expect(VentaDto.fromJson(base(null)).recargoCredito, 0.0);
+    });
   });
 }

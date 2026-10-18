@@ -125,6 +125,11 @@ class _VentasScreenState extends State<VentasScreen> {
                       ],
                     ),
                   ],
+                  if (venta.recargoCredito > 0)
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [const Text('Cargo por credito'), Text('+${dinero(venta.recargoCredito)}')],
+                    ),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [

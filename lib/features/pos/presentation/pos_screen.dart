@@ -34,6 +34,7 @@ class _PosScreenState extends State<PosScreen> {
   final FocusNode _busquedaFocus = FocusNode();
   DescuentoCaptura? _descuentoTotalCaptura;
   ClienteDto? _cliente;
+  double _recargoCreditoPct = 0;
   String? _nota;
   late bool _puedeDescuento;
   bool _cargando = true;
@@ -113,11 +114,12 @@ class _PosScreenState extends State<PosScreen> {
     });
     try {
       final token = await _auth.obtenerTokenVigente();
-      final resultados = await Future.wait([_api.catalogo(token), _api.metodosPago(token)]);
+      final resultados = await Future.wait([_api.catalogo(token), _api.metodosPago(token), _api.configuracion(token)]);
       if (!mounted) return;
       setState(() {
         _catalogo = resultados[0] as List<CortePosDto>;
         _metodos = resultados[1] as List<MetodoPagoDto>;
+        _recargoCreditoPct = (resultados[2] as PosConfigDto).recargoCreditoPorcentaje;
         _cargando = false;
       });
     } on ApiException catch (e) {
@@ -157,7 +159,7 @@ class _PosScreenState extends State<PosScreen> {
 
     final resultado = await showDialog<ResultadoCobro>(
       context: context,
-      builder: (_) => CobroDialog(total: _total, metodos: _metodos, cliente: _cliente),
+      builder: (_) => CobroDialog(total: _total, metodos: _metodos, cliente: _cliente, recargoCreditoPorcentaje: _recargoCreditoPct),
     );
     if (resultado == null) return;
 
@@ -204,6 +206,8 @@ class _PosScreenState extends State<PosScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (venta.recargoCredito > 0)
+                Text('Incluye cargo por credito: ${dinero(venta.recargoCredito)}'),
               Text('Total: ${dinero(venta.total)}', style: Theme.of(context).textTheme.titleLarge),
               if (cambio > 0) ...[
                 const SizedBox(height: 8),

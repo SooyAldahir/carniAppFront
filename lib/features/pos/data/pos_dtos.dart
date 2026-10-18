@@ -52,6 +52,34 @@ CortePosDto? buscarPorCodigo(List<CortePosDto> catalogo, String lectura) {
   return null;
 }
 
+/// Reglas del POS que definen el servidor (appsettings).
+class PosConfigDto {
+  /// % que se suma a lo fiado. Siempre se muestra al cliente en el ticket.
+  final double recargoCreditoPorcentaje;
+
+  PosConfigDto({required this.recargoCreditoPorcentaje});
+
+  factory PosConfigDto.fromJson(Map<String, dynamic> json) =>
+      PosConfigDto(recargoCreditoPorcentaje: (json['recargoCreditoPorcentaje'] as num).toDouble());
+}
+
+/// Cargo por credito sobre lo fiado, redondeado al centavo como lo hace el servidor.
+double recargoDeCredito(double fiado, double porcentaje) {
+  // Se calcula en centavos enteros para no arrastrar errores de punto flotante
+  // (el servidor usa decimal y redondea la mitad hacia arriba).
+  final centavos = (fiado * 100).round();
+  return (centavos * porcentaje / 100).round() / 100;
+}
+
+/// Mayor importe que se puede fiar para que fiado + cargo no pase de [disponible].
+double maximoFiable(double disponible, double porcentaje) {
+  var tope = (disponible * 100 / (1 + porcentaje / 100)).floor() / 100;
+  while (tope > 0 && tope + recargoDeCredito(tope, porcentaje) > disponible + 1e-9) {
+    tope = redondear2(tope - 0.01);
+  }
+  return tope < 0 ? 0 : tope;
+}
+
 class MetodoPagoDto {
   final String id;
   final String nombre;
@@ -164,6 +192,7 @@ class VentaDto {
   final String? clienteNombre;
   final String? clienteDireccion;
   final String? nota;
+  final double recargoCredito;
 
   VentaDto({
     required this.id,
@@ -180,6 +209,7 @@ class VentaDto {
     this.clienteNombre,
     this.clienteDireccion,
     this.nota,
+    this.recargoCredito = 0,
   });
 
   bool get anulada => estado == 'Anulada';
@@ -203,6 +233,7 @@ class VentaDto {
         clienteNombre: json['clienteNombre'] as String?,
         clienteDireccion: json['clienteDireccion'] as String?,
         nota: json['nota'] as String?,
+        recargoCredito: (json['recargoCredito'] as num?)?.toDouble() ?? 0,
       );
 }
 
