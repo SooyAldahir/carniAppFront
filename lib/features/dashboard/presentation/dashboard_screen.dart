@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../../caja/presentation/caja_screen.dart';
 import '../../catalogos/presentation/catalogos_screen.dart';
 import '../../clientes/presentation/clientes_screen.dart';
 import '../../inventario/presentation/inventario_screen.dart';
@@ -126,6 +127,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 icon: const Icon(Icons.warehouse_outlined),
                 label: const Text('Inventario'),
               ),
+              if (usuario.tienePermiso('caja.cortar')) ...[
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const CajaScreen()),
+                  ),
+                  icon: const Icon(Icons.account_balance_wallet_outlined),
+                  label: const Text('Caja y corte'),
+                ),
+              ],
               if (usuario.tienePermiso('ventafacil.registrar')) ...[
                 const SizedBox(height: 12),
                 OutlinedButton.icon(

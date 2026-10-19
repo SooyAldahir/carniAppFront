@@ -472,3 +472,7 @@ class _NotaDialogState extends State<_NotaDialog> {
     );
   }
 }
+
+/// Muestra un ticket ya armado (texto de 32 columnas) con imprimir / copiar.
+Future<void> mostrarTicketTexto(BuildContext context, String texto) =>
+    showDialog<void>(context: context, builder: (_) => _TicketDialog(texto: texto));
